@@ -2,8 +2,8 @@
 FROM ubuntu:18.04
 
 # Update Ubuntu Software repository
-RUN apt-get update
-RUN apt-get upgrade
+RUN apt-get update -y
+RUN apt-get upgrade -y
 
 # Set the locale
 RUN apt-get clean && apt-get update && apt-get install -y locales
@@ -31,11 +31,11 @@ RUN dpkg -i tmp/dtc.deb
 RUN apt-get install -f
 
 # Install the Zephyr Software Development Kit (SDK)
-RUN curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.10.1/zephyr-sdk-0.10.1-setup.run -o tmp/zephyr-sdk-0.10.1-setup.run && chmod +x tmp/zephyr-sdk-0.10.1-setup.run
-RUN tmp/zephyr-sdk-0.10.1-setup.run -- -d /root/zephyr-sdk-0.10.1
+RUN curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.10.3/zephyr-sdk-0.10.3-setup.run -o tmp/zephyr-sdk-0.10.3-setup.run && chmod +x tmp/zephyr-sdk-0.10.3-setup.run
+RUN tmp/zephyr-sdk-0.10.3-setup.run -- -d /root/zephyr-sdk-0.10.3
 ENV ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.10.1
-RUN rm tmp/zephyr-sdk-0.10.1-setup.run
+ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.10.3
+RUN rm tmp/zephyr-sdk-0.10.3-setup.run
 
 # Bootstrap west
 RUN pip3 install --user west
