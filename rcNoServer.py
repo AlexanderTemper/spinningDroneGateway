@@ -43,7 +43,8 @@ try:
     device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
     
     while True:
-        time.sleep(100)
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [1,2,3,4,5], wait_for_response=False)
+		time.sleep(1)
         
 except KeyboardInterrupt:
     print('kill signal')
