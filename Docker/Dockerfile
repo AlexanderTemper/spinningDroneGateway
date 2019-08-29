@@ -54,6 +54,7 @@ RUN pip3 install --user pyocd
 RUN apt-get install udev -y
 RUN echo 'ATTRS{product}=="*CMSIS-DAP*", MODE="660", GROUP="plugdev", TAG+="uaccess"' > /etc/udev/rules.d/50-mbed.rules
 
+ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.10.3
 #create a directory for our project & setup a shared workfolder between the host and docker container
 RUN mkdir -p /usr/src/app
 VOLUME ["/usr/src/app"]

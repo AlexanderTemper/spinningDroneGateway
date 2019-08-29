@@ -7,7 +7,6 @@
 #include <string.h>
 #include <sys/printk.h>
 #include <sys/byteorder.h>
-#include <uart.h> 
 #include <zephyr.h>
 #include <zephyr/types.h>
 
@@ -16,10 +15,11 @@
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
 #define LED	DT_ALIAS_LED0_GPIOS_PIN
 
-#define SLEEP_TIME 	50
-
+#define SLEEP_TIME 	100
 
 uint16_t distance_mm = 0;
+
+
 
 void main(void)
 {
@@ -41,9 +41,9 @@ void main(void)
 		return;
 	}
 	
-	
-	bluetoothUartInit();
 
+
+	bluetoothUartInit();
 
 	while (1) {
 		gpio_pin_write(dev, LED, cnt % 2);

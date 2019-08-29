@@ -4,6 +4,7 @@
 #include <bluetooth/uuid.h>
 #include <bluetooth/gatt.h>
 #include <init.h>
+#include <uart.h>
 
 
 #include "bluetoothUart.h"
@@ -14,20 +15,25 @@ static struct bt_conn *default_conn;
 #include <logging/log.h>
 LOG_MODULE_REGISTER(drone);
 
-static u8_t rx_Buffer[20];
+static struct bridge_data {
+	u8_t rx_Buffer[20];
+	struct device *uart_dev;
+} peer;
 
-static ssize_t write_signed(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			    const void *buf, u16_t len, u16_t offset,
-			    u8_t flags)
+static u8_t testlen = 0;
+static ssize_t write_signed(struct bt_conn *conn, const struct bt_gatt_attr *attr,const void *buf, u16_t len, u16_t offset, u8_t flags)
 {
-	u8_t *value = attr->user_data;
+	struct bridge_data *dev_data =  attr->user_data;
+	u8_t *value = dev_data->rx_Buffer;
 
-	if (offset + len > sizeof(rx_Buffer)) {
+	if (offset + len > 20) {
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
 	}
 
 	memcpy(value + offset, buf, len);
 	
+	testlen = len;
+
 	return len;
 }
 
@@ -43,7 +49,7 @@ BT_GATT_SERVICE_DEFINE(drone_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_UART),
 	BT_GATT_CHARACTERISTIC(BT_UUID_UART_TX, BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE, NULL, NULL, NULL),
 	BT_GATT_CCC(sdgmc_ccc_cfg_changed),
-	BT_GATT_CHARACTERISTIC(BT_UUID_UART_RX, BT_GATT_CHRC_WRITE , BT_GATT_PERM_WRITE, NULL, write_signed, rx_Buffer),
+	BT_GATT_CHARACTERISTIC(BT_UUID_UART_RX, BT_GATT_CHRC_WRITE , BT_GATT_PERM_WRITE, NULL, write_signed, &peer),
 );
 
 static const struct bt_data ad[] = {
@@ -107,15 +113,37 @@ static struct bt_conn_auth_cb auth_cb_display = {
 	.cancel = auth_cancel,
 };
 
+// Uart Interrupt Handler
+static void interrupt_handler(void *user_data)
+{
+	struct bridge_data *dev_data = user_data;
+	struct device *dev = dev_data->uart_dev;
+	static u8_t recvData;
+
+	while (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
+
+		if (uart_irq_rx_ready(dev)) {
+			uart_fifo_read(dev, &recvData, 1);
+			uart_irq_tx_enable(dev);
+		}
+
+		if (uart_irq_tx_ready(dev)) {
+			uart_fifo_fill(dev,&testlen, 1);
+			uart_irq_tx_disable(dev);
+		}
+	}
+}
+
+
 
 static int Uart_init(struct device *dev)
 {
 	ARG_UNUSED(dev);
 
-	memset(rx_Buffer,0,sizeof(rx_Buffer));
 
 	return 0;
 }
+
 
 void bluetoothUartInit(){
 	int err;
@@ -128,6 +156,17 @@ void bluetoothUartInit(){
 
 	bt_conn_cb_register(&conn_callbacks);
 	bt_conn_auth_cb_register(&auth_cb_display);
+
+	struct bridge_data *dev_data0 = &peer;
+	struct device *uart_dev = device_get_binding("UART_1");
+	if (uart_dev == NULL) {
+		printk("Could not get Uart device\n");
+		return;
+	}
+
+	dev_data0->uart_dev = uart_dev;
+	uart_irq_callback_user_data_set(uart_dev, interrupt_handler, dev_data0);
+	uart_irq_rx_enable(uart_dev);
 }
 
 
