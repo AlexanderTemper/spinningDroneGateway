@@ -4,7 +4,7 @@
 
 
 void bluetoothUartInit();
-void sdg_notify(uint16_t dis);
+void sdg_notify();
 
 #define BT_UUID_UART BT_UUID_DECLARE_16(0x8880)
 #define BT_UUID_UART_TX BT_UUID_DECLARE_16(0x8881)

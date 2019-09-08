@@ -10,18 +10,16 @@ from binascii import hexlify
 # char-desc
 # 2d30c083-f39f-4ce6-923f-3484ea480596 zum schreiben
 
+#12345678901234567890ABCDEFGHIJKLNOPQRSTU12345678901234567890ABCDEFGHIJKLNOPQRSTU12345678901234567890ABCDEFGHIJKLNOPQRSTU12345678901234567890ABCDEFGHIJKLNOPQRSTU12345678901234567890ABCDEFGHIJKLNOPQRSTU
+#ABCDEFGHIJKLNOPQRSTU
 
 ADDRESS_TYPE   = pygatt.BLEAddressType.random
-DEVICE_ADDRESS = "c9:67:1e:d6:db:d7"
+DEVICE_ADDRESS = "c0:08:80:00:08:80"
 adapter = pygatt.GATTToolBackend()
 
-mytime = time.time()
 
 def handle_data(handle, value):
-	global mytime
-	print("Received data: %d" % (value[0]<<8 | value[1]))
-	print (time.time()-mytime)*1000
-	mytime = time.time()
+	print(value)
 
 def connect():
     print("Try connecting to "+DEVICE_ADDRESS);
@@ -43,8 +41,8 @@ try:
     device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
     
     while True:
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [1,2,3,4,5], wait_for_response=False)
-		time.sleep(1)
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [65,66,67,13,10], wait_for_response=False)
+		#time.sleep(1)
         
 except KeyboardInterrupt:
     print('kill signal')
