@@ -41,10 +41,6 @@ void main(void)
 		return;
 	}
 	
-
-
-	bluetoothUartInit();
-
 	while (1) {
 		/*gpio_pin_write(dev, LED, cnt % 2);
 		cnt++;
@@ -62,7 +58,7 @@ void main(void)
 		
 		
 		//printf("distance is %i\n",distance_mm );
-		sdg_notify();
+	    bluetoothUartNotify();
 
 		
 		//k_sleep(SLEEP_TIME);
