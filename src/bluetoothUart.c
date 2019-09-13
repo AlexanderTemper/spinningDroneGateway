@@ -12,8 +12,7 @@
 
 static struct bt_conn *default_conn;
 static u32_t notify_time;
-// 1 ms Timeout
-#define NOTIFY_TIMOUT_MS 5
+#define NOTIFY_TIMOUT_MS 3
 #define DEBUG_BLE_TIMING 1
 
 #define LOG_LEVEL CONFIG_BT_GATT_HRS_LOG_LEVEL
