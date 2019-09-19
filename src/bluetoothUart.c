@@ -39,9 +39,15 @@ static ssize_t write_signed(struct bt_conn *conn, const struct bt_gatt_attr *att
 
 #ifdef DEBUG_BLE_TIMING
     static u32_t cycles_spent = 0;
-    cycles_spent = k_cycle_get_32() - cycles_spent;
-    printk("Time since last BLE Frame received %u \n", SYS_CLOCK_HW_CYCLES_TO_NS(cycles_spent) / 1000);
-    cycles_spent = k_cycle_get_32();
+    const char *bufl = buf;
+    cycles_spent = k_uptime_get_32() - cycles_spent;
+    printk("Time since last BLE Frame received %u %d\n", cycles_spent,len);
+    for(char e=0; e< len;e++){
+        printk("0x%X ", *bufl);
+        bufl++;
+    }
+    printk("\n");
+    cycles_spent = k_uptime_get_32();
 #endif
 
     wrote = ring_buf_put(ringbuf, buf, len);

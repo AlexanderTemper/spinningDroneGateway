@@ -42,19 +42,19 @@ void main(void)
 	}
 	
 	while (1) {
-		/*gpio_pin_write(dev, LED, cnt % 2);
+		gpio_pin_write(dev, LED, cnt % 2);
 		cnt++;
         ret = sensor_sample_fetch(dev_vlx);
 		if (ret) {
 			printk("sensor_sample_fetch failed ret %d\n", ret);
 			return;
-		}*/
+		}
 
-		/*ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_PROX, &value);
+		ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_PROX, &value);
 		//printk("prox is %d\n", value.val1);
 
 		ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_DISTANCE, &value);
-		distance_mm = sensor_value_to_double(&value)*1000;*/
+		distance_mm = sensor_value_to_double(&value)*1000;
 		
 		
 		//printf("distance is %i\n",distance_mm );

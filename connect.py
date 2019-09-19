@@ -28,9 +28,18 @@ def connect():
         print("connected to "+DEVICE_ADDRESS)
         return device
     except pygatt.exceptions.NotConnectedError:
-        return None;
+        return None
 
-
+def send_data():
+	if not device:
+		return None
+	try:
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,13,10], wait_for_response=False)
+		return True
+	except pygatt.exceptions.NotConnectedError:            
+		print("write failed")
+		return None
+    
 try:
     adapter.start()
     
@@ -41,8 +50,13 @@ try:
     device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
     
     while True:
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,13,10], wait_for_response=False)
-		#time.sleep()
+    	while not send_data():
+    		device = connect()
+    	    
+    	
+    	
+        
+#time.sleep()
         
 except KeyboardInterrupt:
     print('kill signal')
