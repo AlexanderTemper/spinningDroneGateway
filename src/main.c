@@ -14,6 +14,7 @@
 #include "bluetoothle.h"
 #include "globals.h"
 #include "uart.h"
+#include "msp.h"
 
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
 #define LED	DT_ALIAS_LED0_GPIOS_PIN
@@ -74,16 +75,7 @@ void main(void)
         ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_DISTANCE, &value);
         distance_mm = sensor_value_to_double(&value) * 1000;
 
-        /*if (!ring_buf_is_empty(&PC_rx.rb)) {
-            char buf[40];
-            int len = ring_buf_get(&PC_rx.rb, buf, sizeof(buf));
-            printk("fromPCtoFC RXBuffer: ");
-            for (char e = 0; e < len; e++) {
-                printk("0x%X ",buf[e]);
-            }
-            printk("\n");
-        }*/
-
+        processMSP();
         //printf("distance is %i\n",distance_mm );
         bluetoothUartNotify();
 

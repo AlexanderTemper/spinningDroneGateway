@@ -1,6 +1,8 @@
 #ifndef GLOBALS_H_
 #define GLOBALS_H_
 
+#include <sys/ring_buffer.h>
+
 #define RING_BUF_SIZE (64 * 4)
 
 

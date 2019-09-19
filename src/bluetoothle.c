@@ -148,7 +148,7 @@ void bluetoothUartNotify()
     u8_t buf[20];
     bool timeout = false;
 
-    struct ring_buf *ringbuf = &PC_rx.rb;
+    struct ring_buf *ringbuf = &PC_tx.rb;
     // Timeout triggered ?
     if (k_uptime_get_32() > notify_time) {
         notify_time = k_uptime_get_32() + NOTIFY_TIMOUT_MS;

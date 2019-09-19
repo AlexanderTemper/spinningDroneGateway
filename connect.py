@@ -34,7 +34,7 @@ def send_data():
 	if not device:
 		return None
 	try:
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,13,10], wait_for_response=False)
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,0,10,10], wait_for_response=False)
 		return True
 	except pygatt.exceptions.NotConnectedError:            
 		print("write failed")
