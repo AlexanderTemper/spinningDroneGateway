@@ -1,7 +1,6 @@
-#ifndef BLUETOOTH_UART_H_
-#define BLUETOOTH_UART_H_
+#ifndef BLUETOOTH_LE_H_
+#define BLUETOOTH_LE_H_
 
-void bluetoothUartInit();
 void bluetoothUartNotify();
 
 #define BT_ADDR_UART_0 0x80
@@ -15,4 +14,4 @@ void bluetoothUartNotify();
 #define BT_UUID_UART_TX BT_UUID_DECLARE_16(0x8881)
 #define BT_UUID_UART_RX BT_UUID_DECLARE_16(0x8882)
 
-#endif /*BLUETOOTH_UART_H_*/
+#endif /*BLUETOOTH_LE_H_*/

@@ -52,6 +52,8 @@ try:
     while True:
     	while not send_data():
     		device = connect()
+    		if device:
+    			device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
     	    
     	
     	
