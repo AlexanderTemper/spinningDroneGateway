@@ -6,7 +6,6 @@
 
 #define MSP_PORT_INBUF_SIZE 192
 #define MSP_PORT_OUTBUF_SIZE 256
-#define MSP_V2_FRAME_ID 255
 
 #define ARRAYLEN(x) (sizeof(x) / sizeof((x)[0]))
 #define ARRAYEND(x) (&(x)[ARRAYLEN(x)])
@@ -45,46 +44,40 @@ typedef enum {
     MSP_IDLE,
     MSP_HEADER_START,
     MSP_HEADER_M,
-    MSP_HEADER_X,
 
     MSP_HEADER_V1,
     MSP_PAYLOAD_V1,
     MSP_CHECKSUM_V1,
-
-    MSP_HEADER_V2_OVER_V1,
-    MSP_PAYLOAD_V2_OVER_V1,
-    MSP_CHECKSUM_V2_OVER_V1,
-
-    MSP_HEADER_V2_NATIVE,
-    MSP_PAYLOAD_V2_NATIVE,
-    MSP_CHECKSUM_V2_NATIVE,
 
     MSP_COMMAND_RECEIVED
 } mspState_e;
 
 typedef enum {
     MSP_PACKET_COMMAND,
-    MSP_PACKET_REPLY
+    MSP_PACKET_REPLY,
 } mspPacketType_e;
+
+typedef enum {
+    MSP_GATEWAY_PACKET_REPLY,
+    MSP_GATEWAY_PACKET_MODIFY,
+    MSP_GATEWAY_PACKET_PASSTHROUGH
+} mspGatewayPacketType_e;
+
+typedef enum {
+    MSP_PORT_PC,
+    MSP_PORT_FC
+} mspPortType_e;
 
 typedef struct __attribute__((packed)) {
     uint8_t size;
     uint8_t cmd;
 } mspHeaderV1_t;
 
-typedef struct __attribute__((packed)) {
-    uint16_t size;
-} mspHeaderJUMBO_t;
-
-typedef struct __attribute__((packed)) {
-    uint8_t  flags;
-    uint16_t cmd;
-    uint16_t size;
-} mspHeaderV2_t;
-
-typedef struct mspPort_s {
-    u32_t lastActivityMs;
+typedef struct mspPort_s mspPort_t;
+struct mspPort_s {
     mspState_e c_state;
+    mspPortType_e portType;
+    u32_t lastActivityMs;
     uint16_t cmdMSP;
     uint8_t cmdFlags;
     ringbuffer_t *rxBuffer;
@@ -93,10 +86,10 @@ typedef struct mspPort_s {
     uint_fast16_t offset;
     uint_fast16_t dataSize;
     uint8_t checksum1;
-    uint8_t checksum2;
     mspVersion_e mspVersion;
     mspPacketType_e packetType;
-} mspPort_t;
+    mspPort_t *passthroughPort;
+};
 
 extern mspPort_t PC_msp;
 extern mspPort_t FC_msp;

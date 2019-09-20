@@ -35,6 +35,11 @@ static void interrupt_handler(void *user_data)
         if (!len) {
             uart_irq_tx_disable(dev);
         } else {
+//            printk("Tx send ");
+//            for (int i = 0; i < len; i++) {
+//                printk("%X ", buf[i]);
+//            }
+//            printk("\n");
             wrote = uart_fifo_fill(dev, buf, len);
         }
     }
@@ -47,6 +52,11 @@ static void interrupt_handler(void *user_data)
             LOG_ERR("Drop %u bytes tx", drop_tx);
         }
     }
+}
+
+void uart_start_tx(void)
+{
+    uart_irq_tx_enable(userdata.uart_dev);
 }
 
 static int uart_init(struct device *dev)

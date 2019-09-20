@@ -14,7 +14,7 @@
 static struct bt_conn *default_conn;
 static u32_t notify_time;
 #define NOTIFY_TIMOUT_MS 3
-#define DEBUG_BLE_TIMING 1
+//#define DEBUG_BLE_TIMING 1
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER( drone_ble, LOG_LEVEL_DBG);
