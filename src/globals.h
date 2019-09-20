@@ -16,5 +16,7 @@ extern ringbuffer_t  PC_tx;
 extern ringbuffer_t  FC_rx;
 extern ringbuffer_t  FC_tx;
 
+extern uint16_t distance_mm;
+
 
 #endif /*GLOBALS_H_*/

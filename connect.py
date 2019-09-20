@@ -17,6 +17,29 @@ ADDRESS_TYPE   = pygatt.BLEAddressType.random
 DEVICE_ADDRESS = "c0:08:80:00:08:80"
 adapter = pygatt.GATTToolBackend()
 
+def send_MSP(command,data):
+	outdata = []
+	outdata.append(0x24)
+	outdata.append(0x4d)
+	outdata.append(0x3c)
+	
+	outdata.append(len(data))
+	outdata.append(command)
+	
+	crc = []
+	crc.append(len(data))
+	crc.append(command)
+	
+	for x in data:
+		outdata.append(x)
+		crc.append(x)
+	
+	outdata.append(xor(crc))
+	
+	#print(outdata)
+	
+	return outdata
+	
 def xor(data):
 	erg = 0
 	for x in data:
@@ -25,7 +48,8 @@ def xor(data):
 	return erg
 
 def handle_data(handle, value):
-	print("Received data: %s" % hexlify(value))
+	print("Received data: %s" % value)
+	print("Received datahex : %s" % hexlify(value))
 
 def connect():
     print("Try connecting to "+DEVICE_ADDRESS);
@@ -40,9 +64,9 @@ def send_data():
 	if not device:
 		return None
 	try:
-		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,0,200,200], wait_for_response=False)#RC SET ROW
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,5,20,0,1,2,3,4,xor([5,20,0,1,2,3,4])], wait_for_response=False)#JUST PASSTHRO
-		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,0,10,10], wait_for_response=False)#Reply Gateway
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200,[0,0,0,0,0,0,0,0,0,0]), wait_for_response=False)#RC SET ROW
+		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(10,[]), wait_for_response=False)#Reply Gateway
+		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,5,20,0,1,2,3,4,xor([5,20,0,1,2,3,4])], wait_for_response=False)#JUST PASSTHRO
 		return True
 	except pygatt.exceptions.NotConnectedError:            
 		print("write failed")

@@ -4,6 +4,7 @@
 #include "msp.h"
 #include "msp_protocol.h"
 #include "uart.h"
+#include "streambuf.h"
 
 mspPort_t PC_msp;
 mspPort_t FC_msp;
@@ -29,13 +30,14 @@ int init_msp(struct device *dev)
 
 static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
 {
-    switch (mspPort->cmdMSP) {
-    case MSP_SET_RAW_RC:
-        return MSP_GATEWAY_PACKET_MODIFY;
+    if (mspPort->portType == MSP_PORT_PC) {
+        switch (mspPort->cmdMSP) {
+        case MSP_SET_RAW_RC:
+            return MSP_GATEWAY_PACKET_MODIFY;
 
-    /*case MSP_NAME:
-        return MSP_GATEWAY_PACKET_REPLY;
-*/
+        case MSP_NAME:
+            return MSP_GATEWAY_PACKET_REPLY;
+        }
     }
     return MSP_GATEWAY_PACKET_PASSTHROUGH;
 }
@@ -59,7 +61,7 @@ static bool write_data_to_passthroughPort(mspPort_t *mspPort, u8_t *data, u32_t 
         return false;
     }
 
-    if(mspPort->passthroughPort->portType == MSP_PORT_FC){
+    if (mspPort->passthroughPort->portType == MSP_PORT_FC) {
         uart_start_tx();
     }
 
@@ -127,20 +129,19 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
             } else {
                 mspPort->dataSize = hdr->size;
                 mspPort->cmdMSP = hdr->cmd;
-                mspPort->cmdFlags = 0;
                 mspPort->offset = 0;                // re-use buffer
                 mspPort->c_state = mspPort->dataSize > 0 ? MSP_PAYLOAD_V1 : MSP_CHECKSUM_V1;    // If no payload - jump to checksum byte
             }
 
-            mspGatewayPacketType_e gatewayPaketType = msp_packet_lookup_table(mspPort);
-            switch (gatewayPaketType) {
+            mspPort->gatewaypacketType = msp_packet_lookup_table(mspPort);
+            switch (mspPort->gatewaypacketType) {
             case MSP_GATEWAY_PACKET_REPLY:
                 printk("MSP_GATEWAY_PACKET_REPLY\n");
                 mspPort->packetType = MSP_PACKET_COMMAND;
                 break;
             case MSP_GATEWAY_PACKET_MODIFY:
                 printk("MSP_GATEWAY_PACKET_MODIFY\n");
-                mspPort->packetType = MSP_PACKET_REPLY;
+                mspPort->packetType = MSP_PACKET_COMMAND;
                 break;
             default:
             case MSP_GATEWAY_PACKET_PASSTHROUGH:
@@ -178,6 +179,147 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
     return true;
 }
 
+static int mspSendFrame(mspPort_t *msp, const uint8_t * hdr, int hdrLen, const uint8_t * data, int dataLen, const uint8_t * crc, int crcLen)
+{
+    // We are allowed to send out the response if
+    //  a) TX buffer is completely empty (we are talking to well-behaving party that follows request-response scheduling;
+    //  b) Response fits into TX buffer
+    const int totalFrameLength = hdrLen + dataLen + crcLen;
+    struct ring_buf *ringbuf = &msp->txBuffer->rb;
+
+    if (!ring_buf_is_empty(ringbuf)) {
+        if (ring_buf_space_get(ringbuf) < totalFrameLength) {
+            printk("msp send buffer has not enough space left need %d get %u \n", totalFrameLength, ring_buf_space_get(ringbuf));
+            return 0;
+        }
+    }
+    // Transmit frame
+    int wrote = 0;
+    wrote = ring_buf_put(ringbuf, hdr, hdrLen);
+    wrote += ring_buf_put(ringbuf, data, dataLen);
+    wrote += ring_buf_put(ringbuf, crc, crcLen);
+    if (wrote < totalFrameLength) {
+        LOG_ERR("Write error msp");
+        return 0;
+    }
+
+    if (msp->portType == MSP_PORT_FC) {
+        uart_start_tx();
+    }
+    return totalFrameLength;
+}
+static uint8_t mspSerialChecksumBuf(uint8_t checksum, const uint8_t *data, int len)
+{
+    while (len-- > 0) {
+        checksum ^= *data++;
+    }
+    return checksum;
+}
+static int mspSerialEncode(mspPort_t *msp, mspPacket_t *packet)
+{
+    const int dataLen = sbufBytesRemaining(&packet->buf);
+    uint8_t hdrBuf[16] = {
+            '$',
+            'M',
+            packet->direction };
+    uint8_t crcBuf[2];
+    uint8_t checksum;
+    int hdrLen = 3;
+    int crcLen = 0;
+
+#define V1_CHECKSUM_STARTPOS 3
+    mspHeaderV1_t * hdrV1 = (mspHeaderV1_t *) &hdrBuf[hdrLen];
+    hdrLen += sizeof(mspHeaderV1_t);
+    hdrV1->cmd = packet->cmd;
+    hdrV1->size = dataLen;
+    // Pre-calculate CRC
+    checksum = mspSerialChecksumBuf(0, hdrBuf + V1_CHECKSUM_STARTPOS, hdrLen - V1_CHECKSUM_STARTPOS);
+    checksum = mspSerialChecksumBuf(checksum, sbufPtr(&packet->buf), dataLen);
+    crcBuf[crcLen++] = checksum;
+
+    // Send the frame
+    return mspSendFrame(msp, hdrBuf, hdrLen, sbufPtr(&packet->buf), dataLen, crcBuf, crcLen);
+}
+
+static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
+{
+    sbuf_t srcBuffer;
+
+    sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
+
+    switch (mspPort->cmdMSP) {
+    case MSP_SET_RAW_RC:
+        printk("MSP_SET_RAW_RC request data ");
+        uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
+        for (int i = 0; i < channelCount; i++) {
+            uint16_t test = sbufReadU16(src);
+            printk("%d ", test);
+            sbufWriteU16(dst, distance_mm);
+        }
+        printk("\n");
+        return true;
+    }
+    printk("modify_data connot find cmd\n");
+    return false;
+}
+
+static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
+{
+    switch (mspPort->cmdMSP) {
+    case MSP_NAME:
+        printk("MSP_NAME request data");
+        sbufWriteU8(dst, 'X');
+        sbufWriteU8(dst, 'E');
+        sbufWriteU8(dst, 'N');
+        sbufWriteU8(dst, 'O');
+        sbufWriteU8(dst, 'N');
+        printk("\n");
+        return true;
+        /*case MSP_NAME:
+         return MSP_GATEWAY_PACKET_REPLY;
+         */
+    }
+    printk("modify_data connot find cmd\n");
+    return false;
+}
+
+static void mspModify(mspPort_t *mspPort)
+{
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t modify = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = mspPort->cmdMSP,
+            .direction = mspPort->packetType == MSP_PACKET_COMMAND ? '<' : '>', };
+    uint8_t *outBufHead = modify.buf.ptr;
+    sbuf_t *dst = &modify.buf;
+    if (!modify_data(mspPort, dst)) {
+        return;
+    }
+
+    sbufSwitchToReader(&modify.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort->passthroughPort, &modify); // put the modify_data on passthroughPort
+}
+
+static void mspReply(mspPort_t *mspPort)
+{
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t reply = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = mspPort->cmdMSP,
+            .direction = '<', };
+    uint8_t *outBufHead = reply.buf.ptr;
+    sbuf_t *dst = &reply.buf;
+    if (!reply_data(mspPort, dst)) {
+        return;
+    }
+    sbufSwitchToReader(&reply.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort, &reply);
+}
+
 static void mspSerialProcess(mspPort_t *mspPort)
 {
     struct ring_buf *ringbuf = &mspPort->rxBuffer->rb;
@@ -203,12 +345,10 @@ static void mspSerialProcess(mspPort_t *mspPort)
 
             if (mspPort->c_state == MSP_COMMAND_RECEIVED) {
                 //printk("get MSP_COMMAND_RECEIVED\n");
-                if (mspPort->packetType == MSP_PACKET_COMMAND) {
-                    //printk("get MSP_PACKET_COMMAND\n");
-                    //mspSerialProcessReceivedCommand(mspPort);
-                } else if (mspPort->packetType == MSP_PACKET_REPLY) {
-                    //printk("get MSP_PACKET_REPLY\n");
-                    //mspSerialProcessReceivedReply(mspPort, mspProcessReplyFn);
+                if (mspPort->gatewaypacketType == MSP_GATEWAY_PACKET_MODIFY) {
+                    mspModify(mspPort);
+                } else if (mspPort->gatewaypacketType == MSP_GATEWAY_PACKET_REPLY) {
+                    mspReply(mspPort);
                 }
 
                 mspPort->c_state = MSP_IDLE;

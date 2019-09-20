@@ -20,8 +20,6 @@ typedef enum {
 typedef struct mspPacket_s {
     sbuf_t buf;
     int16_t cmd;
-    uint8_t flags;
-    int16_t result;
     uint8_t direction;
 } mspPacket_t;
 
@@ -79,7 +77,6 @@ struct mspPort_s {
     mspPortType_e portType;
     u32_t lastActivityMs;
     uint16_t cmdMSP;
-    uint8_t cmdFlags;
     ringbuffer_t *rxBuffer;
     ringbuffer_t *txBuffer;
     uint8_t inBuf[MSP_PORT_INBUF_SIZE];
@@ -88,6 +85,7 @@ struct mspPort_s {
     uint8_t checksum1;
     mspVersion_e mspVersion;
     mspPacketType_e packetType;
+    mspGatewayPacketType_e gatewaypacketType;
     mspPort_t *passthroughPort;
 };
 
