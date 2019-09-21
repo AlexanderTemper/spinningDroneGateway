@@ -249,14 +249,15 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 
     switch (mspPort->cmdMSP) {
     case MSP_SET_RAW_RC:
-        printk("MSP_SET_RAW_RC request data ");
+        ;
+        //printk("MSP_SET_RAW_RC request data ");
         uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
         for (int i = 0; i < channelCount; i++) {
             uint16_t test = sbufReadU16(src);
             printk("%d ", test);
-            sbufWriteU16(dst, distance_mm);
+            sbufWriteU16(dst, test);
         }
-        printk("\n");
+        //printk("\n");
         return true;
     }
     printk("modify_data connot find cmd\n");
