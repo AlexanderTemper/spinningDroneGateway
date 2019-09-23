@@ -81,7 +81,7 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
         LOG_ERR("Could not clear  (error=%d)", ret);
         return -EINVAL;
     }
-    VL53L0X_PollingDelay(&tofDev);
+    VL53L0X_PollingDelay(&drv_data->vl53l0x);
 
 
 	return 0;

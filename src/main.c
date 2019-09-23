@@ -60,26 +60,28 @@ void main(void)
     init_ringbuffer(&FC_tx);
 
     u32_t sensor_cycles_spent = 0;
+    u32_t nothing_done = 0;
     while (1) {
         gpio_pin_write(dev, LED, cnt % 2);
         cnt++;
-        sensor_cycles_spent = k_uptime_get_32();
+
         ret = sensor_sample_fetch(dev_vlx);
-        if (ret) {
-            printk("sensor_sample_fetch failed ret %d\n", ret);
+        if (ret == 0) {
+            sensor_cycles_spent = k_uptime_get_32() - sensor_cycles_spent;
+            //ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_PROX, &value);
+                    //printk("prox is %d\n", value.val1);
+            ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_DISTANCE, &value);
+            distance_mm = sensor_value_to_double(&value) * 1000;
+            printf("distance is %i took %u|%u\n",distance_mm,sensor_cycles_spent,nothing_done);
+            sensor_cycles_spent = k_uptime_get_32();
+            nothing_done = 0;
+        } else {
+            nothing_done++;
         }
 
+        processMSP();
 
-        ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_PROX, &value);
-        //printk("prox is %d\n", value.val1);
-
-        ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_DISTANCE, &value);
-        distance_mm = sensor_value_to_double(&value) * 1000;
-
-        sensor_cycles_spent = k_uptime_get_32() - sensor_cycles_spent;
-        //processMSP();
-        //printf("distance is %i took %u\n",distance_mm,sensor_cycles_spent );
-        //bluetoothUartNotify();
+        bluetoothUartNotify();
 
         //k_sleep(SLEEP_TIME);
     }
