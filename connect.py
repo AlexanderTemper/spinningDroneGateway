@@ -7,6 +7,7 @@ from inputs import get_gamepad
 from threading import Thread
 
 withConfig = False;
+taranis = True;
 if withConfig:
 	import socket
 	
@@ -89,19 +90,36 @@ class ps3joyClass:
 	def update(self,events):
 		for event in events:
 			self.timeout = millis()
-			if event.code == 'ABS_X':
-				self.yaw = self.scale(event.state)
-				self.timeout = millis()
-			elif event.code == 'ABS_RZ':
-				self.throttle = int((event.state / 255.0) *500 +1000)
-			elif event.code == 'ABS_RY':
-				self.pitch = self.scale(255-event.state)
-			elif event.code == 'ABS_RX':
-				self.roll = self.scale(event.state)
-			elif event.code == 'BTN_TR':
-				self.arm = self.scale(event.state*255)
-			#elif event.code != 'SYN_REPORT':
+			if taranis:
 				#print(event.ev_type, event.code, event.state)
+				if event.code == 'ABS_X':
+					self.throttle = self.scale(event.state+127)
+				elif event.code == 'ABS_Z':
+					self.pitch = self.scale(event.state+127)
+				elif event.code == 'ABS_Y':
+					self.roll = self.scale(event.state+127)
+				elif event.code == 'ABS_RX':
+					self.yaw = self.scale(event.state+127)
+				elif event.code == 'ABS_RZ':
+					self.arm = self.scale(event.state+127)
+			else:
+				if event.code == 'ABS_X':
+					self.yaw = self.scale(event.state)
+					self.timeout = millis()
+				#elif event.code == 'ABS_RZ':
+					#self.throttle = int((event.state / 255.0) *500 +1000)
+				elif event.code == 'ABS_RY':
+					self.pitch = self.scale(255-event.state)
+				elif event.code == 'ABS_RX':
+					self.roll = self.scale(event.state)
+				elif event.code == 'BTN_TR':
+					self.arm = self.scale(event.state*255)
+				elif event.code == 'BTN_SOUTH':
+					self.throttle = self.throttle + event.state*5;
+				elif event.code == 'BTN_EAST':
+					self.throttle = self.throttle - event.state*5;
+				#elif event.code != 'SYN_REPORT':
+					#print(event.ev_type, event.code, event.state)
 		
 		if millis()-self.timeout > 500:
 			self.reset()
@@ -115,15 +133,14 @@ def joythread(threadname):
     while True:
 		try: 
 			ps3joy.update(get_gamepad())
+
+			if stop_threads == 1:
+				break
 		except:
 			ps3joy.reset();
 			print ("No Joypad found")
 			return
 		
-		if stop_threads == 1:
-			break
-		
-
 def send_MSP(command,data):
 	outdata = []
 	outdata.append(0x24)
@@ -157,8 +174,8 @@ def xor(data):
 def handle_data(handle, value):
 	if withConfig:
 		conn.sendall(value)
-	print("Received data: %s" % value)
-	print("Received datahex : %s" % hexlify(value))
+	#print("Received data: %s" % value)
+	#print("Received datahex : %s" % hexlify(value))
 
 def connect():
     print("Try connecting to "+DEVICE_ADDRESS);
@@ -198,18 +215,19 @@ try:
 	device = connect()
 	while not device:
 	    device = connect()
-	     
-	device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
+ 	     
+	#device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
 	timer = millis()
 	while True:
-		ps3joy.show()
-		if millis() -timer  > 25:
-			timer = millis()
+		
+ 		if millis() -timer  > 25:
+			ps3joy.show()
+ 			timer = millis()
 			while not send_data():
 				device = connect()
 				if device:
 					device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
-			
+ 			
 		if withConfig:
 			data = conn.recv(20) 
 			if data:

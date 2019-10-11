@@ -252,11 +252,27 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
         ;
         //printk("MSP_SET_RAW_RC request data ");
         uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
-        for (int i = 0; i < channelCount; i++) {
-            uint16_t test = sbufReadU16(src);
-            printk("%d ", test);
-            sbufWriteU16(dst, test);
+#define CHAN 5
+#define MODE 5
+#define THR 4
+        u16_t chan[CHAN];
+        for (int i = 0; i < channelCount && i < CHAN; i++) {
+            chan[i] = sbufReadU16(src);
         }
+
+        for (int i = 0; i < CHAN; i++) {
+            uint16_t data = chan[i];
+
+            if (chan[MODE-1] > 1600 && i == (THR - 1)) { // altHoldMode
+                u16_t t = constrain(data + thrust_alt, 1100, 1800);
+                printk("[%d %i %d]", data, thrust_alt, t);
+                sbufWriteU16(dst, t);
+            } else {
+                printk("%d ", data);
+                sbufWriteU16(dst, data);
+            }
+        }
+
         //printk("\n");
         return true;
     }

@@ -49,16 +49,7 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
 	struct vl53l0x_data *drv_data = dev->driver_data;
 	VL53L0X_Error ret;
 
-	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL
-			|| chan == SENSOR_CHAN_DISTANCE
-			|| chan == SENSOR_CHAN_PROX);
-
-	/*ret = VL53L0X_PerformSingleRangingMeasurement(&drv_data->vl53l0x,
-					&drv_data->RangingMeasurementData);
-	if (ret < 0) {
-		LOG_ERR("Could not perform measurment (error=%d)", ret);
-		return -EINVAL;
-	}*/
+	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_DISTANCE || chan == SENSOR_CHAN_PROX);
 
     uint8_t NewDatReady = 0;
     ret = VL53L0X_GetMeasurementDataReady(&drv_data->vl53l0x, &NewDatReady);
@@ -68,7 +59,7 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
     }
 
     if (NewDatReady != 0x01) {
-        return -25;
+        return -EBUSY;
     }
     ret = VL53L0X_GetRangingMeasurementData(&drv_data->vl53l0x, &drv_data->RangingMeasurementData);
     if (ret < 0) {
@@ -88,29 +79,29 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
 }
 
 
-static int vl53l0x_channel_get(struct device *dev,
-			       enum sensor_channel chan,
-			       struct sensor_value *val)
+static int vl53l0x_channel_get(struct device *dev, enum sensor_channel chan, struct sensor_value *val)
 {
-	struct vl53l0x_data *drv_data = (struct vl53l0x_data *)dev->driver_data;
+    struct vl53l0x_data *drv_data = (struct vl53l0x_data *) dev->driver_data;
 
-	__ASSERT_NO_MSG(chan == SENSOR_CHAN_DISTANCE
-			|| chan == SENSOR_CHAN_PROX);
+    __ASSERT_NO_MSG(chan == SENSOR_CHAN_DISTANCE || chan == SENSOR_CHAN_PROX);
 
-	if (chan == SENSOR_CHAN_PROX) {
-		if (drv_data->RangingMeasurementData.RangeMilliMeter <=
-		    CONFIG_VL53L0X_PROXIMITY_THRESHOLD) {
-			val->val1 = 1;
-		} else {
-			val->val1 = 0;
-		}
-		val->val2 = 0;
-	} else {
-		val->val1 = drv_data->RangingMeasurementData.RangeMilliMeter / 1000;
-		val->val2 = (drv_data->RangingMeasurementData.RangeMilliMeter % 1000) * 1000;
-	}
+    if (chan == SENSOR_CHAN_PROX) {
+        if (drv_data->RangingMeasurementData.RangeMilliMeter <= CONFIG_VL53L0X_PROXIMITY_THRESHOLD) {
+            val->val1 = 1;
+        } else {
+            val->val1 = 0;
+        }
+        val->val2 = 0;
+    } else {
+        val->val1 = drv_data->RangingMeasurementData.RangeMilliMeter / 1000;
+        val->val2 = (drv_data->RangingMeasurementData.RangeMilliMeter % 1000) * 1000;
+    }
 
-	return 0;
+    if (drv_data->RangingMeasurementData.RangeStatus != 0) {
+        return -EIO;
+    }
+
+    return 0;
 }
 
 static const struct sensor_driver_api vl53l0x_api_funcs = {
@@ -222,106 +213,6 @@ static int vl53l0x_setup_continous(struct device *dev)
 exit:
     return ret;
 }
-static int vl53l0x_setup_single_shot(struct device *dev)
-{
-	struct vl53l0x_data *drv_data = dev->driver_data;
-	int ret;
-	u8_t VhvSettings;
-	u8_t PhaseCal;
-	u32_t refSpadCount;
-	u8_t isApertureSpads;
-
-	ret = VL53L0X_StaticInit(&drv_data->vl53l0x);
-	if (ret) {
-		LOG_ERR("VL53L0X_StaticInit failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_PerformRefCalibration(&drv_data->vl53l0x,
-					    &VhvSettings,
-					    &PhaseCal);
-	if (ret) {
-		LOG_ERR("VL53L0X_PerformRefCalibration failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_PerformRefSpadManagement(&drv_data->vl53l0x,
-					       (uint32_t *)&refSpadCount,
-					       &isApertureSpads);
-	if (ret) {
-		LOG_ERR("VL53L0X_PerformRefSpadManagement failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetDeviceMode(&drv_data->vl53l0x,
-				    VL53L0X_DEVICEMODE_SINGLE_RANGING);
-	if (ret) {
-		LOG_ERR("VL53L0X_SetDeviceMode failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x,
-					  VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
-					  1);
-	if (ret) {
-		LOG_ERR("VL53L0X_SetLimitCheckEnable sigma failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x,
-				VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
-				1);
-	if (ret) {
-		LOG_ERR("VL53L0X_SetLimitCheckEnable signal rate failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x,
-				VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
-				VL53L0X_SETUP_SIGNAL_LIMIT);
-
-	if (ret) {
-		LOG_ERR("VL53L0X_SetLimitCheckValue signal rate failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x,
-					 VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
-					 VL53L0X_SETUP_SIGMA_LIMIT);
-	if (ret) {
-		LOG_ERR("VL53L0X_SetLimitCheckValue sigma failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetMeasurementTimingBudgetMicroSeconds(&drv_data->vl53l0x,
-					    VL53L0X_SETUP_MAX_TIME_FOR_RANGING);
-	if (ret) {
-		LOG_ERR(
-		"VL53L0X_SetMeasurementTimingBudgetMicroSeconds failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x,
-					  VL53L0X_VCSEL_PERIOD_PRE_RANGE,
-					  VL53L0X_SETUP_PRE_RANGE_VCSEL_PERIOD);
-	if (ret) {
-		LOG_ERR("VL53L0X_SetVcselPulsePeriod pre range failed");
-		goto exit;
-	}
-
-	ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x,
-					VL53L0X_VCSEL_PERIOD_FINAL_RANGE,
-					VL53L0X_SETUP_FINAL_RANGE_VCSEL_PERIOD);
-	if (ret) {
-		LOG_ERR("VL53L0X_SetVcselPulsePeriod final range failed");
-		goto exit;
-	}
-
-exit:
-	return ret;
-}
-
-
 
 static int vl53l0x_init(struct device *dev)
 {

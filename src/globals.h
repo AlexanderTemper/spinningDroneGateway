@@ -16,7 +16,9 @@ extern ringbuffer_t  PC_tx;
 extern ringbuffer_t  FC_rx;
 extern ringbuffer_t  FC_tx;
 
-extern uint16_t distance_mm;
+extern u16_t distance_mm;
+extern s16_t thrust_alt;
 
+#define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 
 #endif /*GLOBALS_H_*/

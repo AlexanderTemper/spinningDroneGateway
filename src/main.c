@@ -15,6 +15,7 @@
 #include "globals.h"
 #include "uart.h"
 #include "msp.h"
+#include "controller.h"
 
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
 #define LED	DT_ALIAS_LED0_GPIOS_PIN
@@ -22,13 +23,73 @@
 #define SLEEP_TIME 	10
 
 uint16_t distance_mm = 0;
-
+s16_t thrust_alt = 0;
 
 // global definitions
-ringbuffer_t  PC_rx;
-ringbuffer_t  PC_tx;
-ringbuffer_t  FC_rx;
-ringbuffer_t  FC_tx;
+ringbuffer_t PC_rx;
+ringbuffer_t PC_tx;
+ringbuffer_t FC_rx;
+ringbuffer_t FC_tx;
+
+/**
+ * 1 old but still valid data
+ * 0 new distance data
+ * -1 unkown error
+ * -2 timeout of last valid read
+ * -3 senor is recovering distance is last valid read (before recover)
+ */
+int fetch_distance(struct device *dev, u16_t *distance)
+{
+    static s64_t last_valid_sample_time = 0;
+    static u32_t valid_timeout = 0;
+    static u16_t d = 0;
+    static u16_t sensor_health = 1;
+    static u16_t sensor_recover = 0;
+
+    // last valid value
+    *distance = d;
+
+    struct sensor_value value;
+    int ret = sensor_sample_fetch(dev);
+
+    if (ret != -EBUSY && ret != 0) { // unknown error
+        sensor_health = 0;
+        sensor_recover = 0;
+        return -1;
+    }
+
+    if (ret == 0 && sensor_channel_get(dev, SENSOR_CHAN_DISTANCE, &value) == 0) { // no error and new valid value
+        last_valid_sample_time = k_uptime_get_32();
+        valid_timeout = 0;
+
+        if (sensor_health == 0) {
+            sensor_recover++;
+
+            if (sensor_recover == 15) { // ca 500ms
+                sensor_health = 1;
+                sensor_recover = 0;
+            } else { // we still recover
+                return -3;
+            }
+        }
+
+        if (sensor_health == 1) {
+            d = sensor_value_to_double(&value) * 1000; // range in mm
+            *distance = d;
+            return 0;
+        }
+
+    }
+
+    valid_timeout = valid_timeout + k_uptime_delta_32(&last_valid_sample_time);
+
+    if (valid_timeout > 100) { // 100ms
+        sensor_health = 0;
+        sensor_recover = 0;
+        return -2;
+    }
+    return 1; // load distance from buffer
+}
 
 void init_ringbuffer(ringbuffer_t *ringbuffer)
 {
@@ -36,7 +97,6 @@ void init_ringbuffer(ringbuffer_t *ringbuffer)
 }
 void main(void)
 {
-    int cnt = 0;
     struct device *dev;
 
     dev = device_get_binding(LED_PORT);
@@ -46,9 +106,6 @@ void main(void)
     printk("Hello World!\n");
 
     struct device *dev_vlx = device_get_binding(DT_INST_0_ST_VL53L0X_LABEL);
-    struct sensor_value value;
-    int ret;
-
     if (dev_vlx == NULL) {
         printk("Could not get VL53L0X device\n");
         return;
@@ -59,26 +116,16 @@ void main(void)
     init_ringbuffer(&FC_rx);
     init_ringbuffer(&FC_tx);
 
-    u32_t sensor_cycles_spent = 0;
-    u32_t nothing_done = 0;
+    //u32_t cycles_spent = 0;
     while (1) {
-        gpio_pin_write(dev, LED, cnt % 2);
-        cnt++;
 
-        ret = sensor_sample_fetch(dev_vlx);
-        if (ret == 0) {
-            sensor_cycles_spent = k_uptime_get_32() - sensor_cycles_spent;
-            //ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_PROX, &value);
-                    //printk("prox is %d\n", value.val1);
-            ret = sensor_channel_get(dev_vlx, SENSOR_CHAN_DISTANCE, &value);
-            distance_mm = sensor_value_to_double(&value) * 1000;
-            printf("distance is %i took %u|%u\n",distance_mm,sensor_cycles_spent,nothing_done);
-            sensor_cycles_spent = k_uptime_get_32();
-            nothing_done = 0;
-        } else {
-            nothing_done++;
+        gpio_pin_write(dev, LED, 1);
+        if (fetch_distance(dev_vlx, &distance_mm) == 0) {
+
+            getAltitudeThrottle(getEstimatedAltitude(distance_mm),200);
+            //printf("distance is %i|%i took %u\n", getEstimatedAltitude(distance_mm), distance_mm, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+            //cycles_spent = k_cycle_get_32();
         }
-
         processMSP();
 
         bluetoothUartNotify();
