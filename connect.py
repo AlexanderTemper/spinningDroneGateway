@@ -172,9 +172,10 @@ def xor(data):
 	return erg
 
 def handle_data(handle, value):
+	print("Received data: %s" % value)
 	if withConfig:
 		conn.sendall(value)
-	#print("Received data: %s" % value)
+	
 	#print("Received datahex : %s" % hexlify(value))
 
 def connect():
@@ -190,9 +191,9 @@ def send_data():
 	if not device:
 		return None
 	try:
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200,ps3joy.todataArray()), wait_for_response=False)#RC SET ROW
+		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200,ps3joy.todataArray()), wait_for_response=False)#RC SET ROW
 		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(105,[]), wait_for_response=False)#RC SET ROW
-		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(10,[]), wait_for_response=False)#Reply Gateway
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(10,[]), wait_for_response=False)#Reply Gateway
 		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,5,20,0,1,2,3,4,xor([5,20,0,1,2,3,4])], wait_for_response=False)#JUST PASSTHRO
 		return True
 	except pygatt.exceptions.NotConnectedError:            
@@ -216,12 +217,12 @@ try:
 	while not device:
 	    device = connect()
  	     
-	#device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
+	device.subscribe("00008881-0000-1000-8000-00805f9b34fb",callback=handle_data)
 	timer = millis()
 	while True:
 		
  		if millis() -timer  > 25:
-			ps3joy.show()
+			#ps3joy.show()
  			timer = millis()
 			while not send_data():
 				device = connect()

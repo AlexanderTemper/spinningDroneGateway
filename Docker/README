@@ -9,3 +9,4 @@ cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && west update && git pul
 cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && cd /usr/src/app && west build -b particle_xenon
 
 cp VLLIB/vl53l0x/vl53l0x.c /root/zephyrproject/zephyr/drivers/sensor/vl53l0x/vl53l0x.c
+cp board.c /root/zephyrproject/zephyr/boards/arm/particle_xenon/board.c

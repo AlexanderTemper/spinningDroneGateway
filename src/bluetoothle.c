@@ -148,6 +148,13 @@ void bluetoothUartNotify()
     u8_t buf[20];
     bool timeout = false;
 
+    //static char str[BT_ADDR_LE_STR_LEN + 2];
+    //struct bt_conn_info info;
+    //bt_conn_get_info(default_conn, &info);
+    //info.le.dst->type
+    //bt_addr_le_to_str(info.le.dst, str, sizeof(str) - 2);
+    //printk("%s    intervall:%d latency:%d timeout:%d \n",str,info.le.interval,info.le.latency,info.le.timeout);
+    //bt_conn_get_info
     struct ring_buf *ringbuf = &PC_tx.rb;
     // Timeout triggered ?
     if (k_uptime_get_32() > notify_time) {
