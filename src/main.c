@@ -128,8 +128,9 @@ void main(void)
         }
         processMSP();
 
+
         bluetoothUartNotify();
 
-        //k_sleep(SLEEP_TIME);
+
     }
 }

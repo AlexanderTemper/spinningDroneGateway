@@ -35,11 +35,11 @@ static void interrupt_handler(void *user_data)
         if (!len) {
             uart_irq_tx_disable(dev);
         } else {
-            printk("Tx send ");
-            for (int i = 0; i < len; i++) {
-                printk("%d ", buf[i]);
-            }
-            printk("\n");
+//            printk("Tx send ");
+//            for (int i = 0; i < len; i++) {
+//                printk("%d ", buf[i]);
+//            }
+//            printk("\n");
             wrote = uart_fifo_fill(dev, buf, len);
         }
     }

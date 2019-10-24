@@ -33,10 +33,17 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
     if (mspPort->portType == MSP_PORT_PC) {
         switch (mspPort->cmdMSP) {
         case MSP_SET_RAW_RC:
-            return MSP_GATEWAY_PACKET_MODIFY;
+            return MSP_GATEWAY_PACKET_MODIFY_AND_REPLY;
 
         case MSP_NAME:
             return MSP_GATEWAY_PACKET_REPLY;
+        }
+    }
+
+    if (mspPort->portType == MSP_PORT_FC) {
+        switch (mspPort->cmdMSP) {
+        case MSP_SET_RAW_RC:
+            return MSP_GATEWAY_PACKET_CONSUME;
         }
     }
     return MSP_GATEWAY_PACKET_PASSTHROUGH;
@@ -136,16 +143,21 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
             mspPort->gatewaypacketType = msp_packet_lookup_table(mspPort);
             switch (mspPort->gatewaypacketType) {
             case MSP_GATEWAY_PACKET_REPLY:
-                printk("MSP_GATEWAY_PACKET_REPLY\n");
-                mspPort->packetType = MSP_PACKET_COMMAND;
+                //printk("MSP_GATEWAY_PACKET_REPLY\n");
+                //mspPort->packetType = MSP_PACKET_REPLY;
                 break;
             case MSP_GATEWAY_PACKET_MODIFY:
-                printk("MSP_GATEWAY_PACKET_MODIFY\n");
-                mspPort->packetType = MSP_PACKET_COMMAND;
+                //printk("MSP_GATEWAY_PACKET_MODIFY\n");
+                //mspPort->packetType = MSP_PACKET_COMMAND;
+                break;
+            case MSP_GATEWAY_PACKET_CONSUME:
+                //printk("MSP_GATEWAY_PACKET_CONSUME\n");
+                break;
+            case MSP_GATEWAY_PACKET_MODIFY_AND_REPLY:
                 break;
             default:
             case MSP_GATEWAY_PACKET_PASSTHROUGH:
-                //printk("MSP_GATEWAY_PACKET_PASSTHROUGH\n");
+                printk("MSP_GATEWAY_PACKET_PASSTHROUGH\n");
                 data[0] = '$';
                 data[1] = 'M';
                 data[2] = mspPort->packetType == MSP_PACKET_COMMAND ? '<' : '>';
@@ -241,6 +253,20 @@ static int mspSerialEncode(mspPort_t *msp, mspPacket_t *packet)
     return mspSendFrame(msp, hdrBuf, hdrLen, sbufPtr(&packet->buf), dataLen, crcBuf, crcLen);
 }
 
+#define CHAN 5
+#define MODE 5
+#define THR 4
+union rcdata_u {
+    struct {
+        u16_t pitch;
+        u16_t roll;
+        u16_t yaw;
+        u16_t thrust;
+        u16_t mode;
+    };
+    u16_t raw[5];
+} rcdata;
+
 static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 {
     sbuf_t srcBuffer;
@@ -252,9 +278,7 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
         ;
         //printk("MSP_SET_RAW_RC request data ");
         uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
-#define CHAN 5
-#define MODE 5
-#define THR 4
+
         u16_t chan[CHAN];
         for (int i = 0; i < channelCount && i < CHAN; i++) {
             chan[i] = sbufReadU16(src);
@@ -263,12 +287,14 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
         for (int i = 0; i < CHAN; i++) {
             uint16_t data = chan[i];
 
-            if (chan[MODE-1] > 1600 && i == (THR - 1)) { // altHoldMode
+            if (chan[MODE - 1] > 1600 && i == (THR - 1)) { // altHoldMode
                 u16_t t = constrain(data + thrust_alt, 1100, 1800);
-                printk("[%d %i %d]", data, thrust_alt, t);
+                rcdata.thrust = t;
+                //printk("[%d %i %d]", data, thrust_alt, t);
                 sbufWriteU16(dst, t);
             } else {
-                printk("%d ", data);
+                rcdata.raw[i] = data;
+                //printk("%d ", data);
                 sbufWriteU16(dst, data);
             }
         }
@@ -282,19 +308,22 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 
 static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
 {
-    switch (mspPort->cmdMSP) {
-    case MSP_NAME:
-        printk("MSP_NAME request data");
-        sbufWriteU8(dst, 'X');
-        sbufWriteU8(dst, 'E');
-        sbufWriteU8(dst, 'N');
-        sbufWriteU8(dst, 'O');
-        sbufWriteU8(dst, 'N');
-        printk("\n");
-        return true;
-        /*case MSP_NAME:
-         return MSP_GATEWAY_PACKET_REPLY;
-         */
+    // Messages Replied to pc
+    if (mspPort->portType == MSP_PORT_PC) {
+        switch (mspPort->cmdMSP) {
+        case MSP_SET_RAW_RC:
+            for (int i = 0; i < CHAN; i++) {
+                sbufWriteU16(dst, rcdata.raw[i]);
+            }
+            return true;
+        case MSP_NAME:
+            sbufWriteU8(dst, 'X');
+            sbufWriteU8(dst, 'E');
+            sbufWriteU8(dst, 'N');
+            sbufWriteU8(dst, 'O');
+            sbufWriteU8(dst, 'N');
+            return true;
+        }
     }
     printk("modify_data connot find cmd\n");
     return false;
@@ -327,7 +356,7 @@ static void mspReply(mspPort_t *mspPort)
                     .ptr = outBuf,
                     .end = ARRAYEND(outBuf), },
             .cmd = mspPort->cmdMSP,
-            .direction = '<', };
+            .direction = '>', };
     uint8_t *outBufHead = reply.buf.ptr;
     sbuf_t *dst = &reply.buf;
     if (!reply_data(mspPort, dst)) {
@@ -335,6 +364,15 @@ static void mspReply(mspPort_t *mspPort)
     }
     sbufSwitchToReader(&reply.buf, outBufHead); // change streambuf direction
     mspSerialEncode(mspPort, &reply);
+}
+
+static bool mspConsume(mspPort_t *mspPort)
+{
+    switch (mspPort->cmdMSP) {
+    case MSP_SET_RAW_RC:
+        return true;
+    }
+    return false;
 }
 
 static void mspSerialProcess(mspPort_t *mspPort)
@@ -365,6 +403,11 @@ static void mspSerialProcess(mspPort_t *mspPort)
                 if (mspPort->gatewaypacketType == MSP_GATEWAY_PACKET_MODIFY) {
                     mspModify(mspPort);
                 } else if (mspPort->gatewaypacketType == MSP_GATEWAY_PACKET_REPLY) {
+                    mspReply(mspPort);
+                } else if (mspPort->gatewaypacketType == MSP_GATEWAY_PACKET_CONSUME) {
+                    mspConsume(mspPort);
+                } else if (mspPort->gatewaypacketType == MSP_GATEWAY_PACKET_MODIFY_AND_REPLY) {
+                    mspModify(mspPort);
                     mspReply(mspPort);
                 }
 

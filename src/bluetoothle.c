@@ -14,7 +14,7 @@
 static struct bt_conn *default_conn;
 static u32_t notify_time;
 #define NOTIFY_TIMOUT_MS 3
-//#define DEBUG_BLE_TIMING 1
+#define DEBUG_BLE_TIMING 1
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER( drone_ble, LOG_LEVEL_DBG);
@@ -28,7 +28,7 @@ static ssize_t write_signed(struct bt_conn *conn, const struct bt_gatt_attr *att
 #ifdef DEBUG_BLE_TIMING
     static u32_t cycles_spent = 0;
     cycles_spent = k_uptime_get_32() - cycles_spent;
-    printk("Time since last BLE Frame received %u %d\n", cycles_spent, len);
+    //printk("Time since last BLE Frame received %u %d\n", cycles_spent, len);
     /*const char *bufl = buf;
 
      for (char e = 0; e < len; e++) {

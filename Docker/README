@@ -10,3 +10,6 @@ cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && cd /usr/src/app && wes
 
 cp VLLIB/vl53l0x/vl53l0x.c /root/zephyrproject/zephyr/drivers/sensor/vl53l0x/vl53l0x.c
 cp board.c /root/zephyrproject/zephyr/boards/arm/particle_xenon/board.c
+
+
+cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && cd /usr/src/app && cp VLLIB/vl53l0x/vl53l0x.c /root/zephyrproject/zephyr/drivers/sensor/vl53l0x/vl53l0x.c && cp board.c /root/zephyrproject/zephyr/boards/arm/particle_xenon/board.c
