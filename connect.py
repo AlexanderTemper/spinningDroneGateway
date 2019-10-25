@@ -154,12 +154,12 @@ class mspClass:
 			yaw = self.toInt(self.inBuffer[4], self.inBuffer[5])
 			throttle = self.toInt(self.inBuffer[6], self.inBuffer[7])
 			mode = self.toInt(self.inBuffer[8], self.inBuffer[9])
-			print "got rc_raw data:" + str(self.time_between_frames) + " roll:" + str(roll) + " pitch:" + str(pitch) + " yaw:" + str(yaw) + " throttle:" + str(throttle) + " mode:" + str(mode)
+			#print "got rc_raw data:" + str(self.time_between_frames) + " roll:" + str(roll) + " pitch:" + str(pitch) + " yaw:" + str(yaw) + " throttle:" + str(throttle) + " mode:" + str(mode)
 		elif self.cmd == self.MSP_SET_PID:
 			p = self.toInt(self.inBuffer[0], self.inBuffer[1])
 			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
 			d = self.toInt(self.inBuffer[4], self.inBuffer[5])
-			print "got PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)
+			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)+"\n-------------------------\n"
 		else:
 			print "command not supported"
 			
@@ -308,7 +308,15 @@ def setPid(p, i, d):
 		0x00FF & i, i >> 8,
 		0x00FF & d, d >> 8,
 	]
-	device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mpsPort.MSP_SET_PID, data), wait_for_response=True)  # RC SET PID
+	if not device:
+		return None
+	try:
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mpsPort.MSP_SET_PID, data), wait_for_response=True)  # RC SET PID
+		return True
+	except pygatt.exceptions.NotConnectedError:            
+		print("write failed")
+		return None
+	
 
 
 def handle_data(handle, value):
@@ -362,6 +370,9 @@ def msp_data(device, data):
         return None
 
 
+P = 100
+I = 5
+D = 5000
 try:
 	
 	adapter.start()
@@ -374,7 +385,12 @@ try:
 	device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
 	# set PID values
 	# 800,10,500
-	setPid(600, 10, 500)
+	
+	while not setPid(P, I, D):
+		device = connect()
+		if device:
+			device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
+ 			
 	timer = millis()
 	while True:
 		
@@ -383,8 +399,10 @@ try:
  			timer = millis()
 			while not send_data():
 				device = connect()
-				if device:
-					device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
+				while not setPid(P, I, D):
+					device = connect()
+					if device:
+						device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
  			
 		if withConfig:
 			data = conn.recv(20) 

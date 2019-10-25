@@ -73,7 +73,7 @@ void setPID(u16_t p, u16_t i, u16_t d)
 static int init_Controller(struct device *dev)
 {
     ARG_UNUSED(dev);
-    setPID(800, 10, 5000);
+    setPID(0, 0, 0);
     return 0;
 }
 
