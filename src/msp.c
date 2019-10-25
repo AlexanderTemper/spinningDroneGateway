@@ -5,6 +5,7 @@
 #include "msp_protocol.h"
 #include "uart.h"
 #include "streambuf.h"
+#include "controller.h"
 
 mspPort_t PC_msp;
 mspPort_t FC_msp;
@@ -34,7 +35,8 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
         switch (mspPort->cmdMSP) {
         case MSP_SET_RAW_RC:
             return MSP_GATEWAY_PACKET_MODIFY_AND_REPLY;
-
+        case MSP_SET_PID:
+            return MSP_GATEWAY_PACKET_REPLY;
         case MSP_NAME:
             return MSP_GATEWAY_PACKET_REPLY;
         }
@@ -308,9 +310,21 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 
 static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
 {
+    sbuf_t srcBuffer;
+
+    sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
     // Messages Replied to pc
     if (mspPort->portType == MSP_PORT_PC) {
         switch (mspPort->cmdMSP) {
+        case MSP_SET_PID:
+            ;
+            uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
+            if (channelCount == 3) {
+                setPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
+                sbufWriteU16(dst, (u16_t) (altHold.P * 1000));
+                sbufWriteU16(dst, (u16_t) (altHold.I * 1000));
+                sbufWriteU16(dst, (u16_t) (altHold.D * 1000));
+            }
         case MSP_SET_RAW_RC:
             for (int i = 0; i < CHAN; i++) {
                 sbufWriteU16(dst, rcdata.raw[i]);

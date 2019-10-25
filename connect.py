@@ -76,6 +76,7 @@ class mspClass:
 	cmd = 0
 	
 	MSP_SET_RAW_RC = 200
+	MSP_SET_PID = 202
 	
 	time_last_frame = 0
 	time_between_frames = 0;
@@ -85,14 +86,16 @@ class mspClass:
 	
 	def mspProcessReceivedData(self, data_byte):
 		if self.c_state == self.MSP_IDLE:
-			#print "MSP_IDLE"
+			if self.time_last_frame == 0:
+				time_last_frame = self.millis()
+			# print "MSP_IDLE"
 			if data_byte == 0x24:  # $
 				self.c_state = self.MSP_HEADER_START
 			else:
 				return False
 			
 		elif self.c_state == self.MSP_HEADER_START:
-			#print "MSP_HEADER_START"
+			# print "MSP_HEADER_START"
 			self.offset = 0
 			self.checksum1 = 0
 			if data_byte == 0x4d:  # M
@@ -101,7 +104,7 @@ class mspClass:
 				self.c_state = self.MSP_IDLE
 				
 		elif self.c_state == self.MSP_HEADER_M:
-			#print "MSP_HEADER_M"
+			# print "MSP_HEADER_M"
 			self.c_state = self.MSP_HEADER_V1
 			if data_byte == 0x3C:  # <
 				self.packetType = self.MSP_PACKET_COMMAND
@@ -111,7 +114,7 @@ class mspClass:
 				self.c_state = self.MSP_IDLE
 				
 		elif self.c_state == self.MSP_HEADER_V1:
-			#print "MSP_HEADER_V1"
+			# print "MSP_HEADER_V1"
 			self.inBuffer[self.offset] = data_byte
 			self.offset = self.offset + 1
 			self.checksum1 = self.checksum1 ^ data_byte
@@ -125,7 +128,7 @@ class mspClass:
 					self.c_state = self.MSP_CHECKSUM_V1
 					
 		elif self.c_state == self.MSP_PAYLOAD_V1:
-			#print "MSP_PAYLOAD_V1"
+			# print "MSP_PAYLOAD_V1"
 			self.inBuffer[self.offset] = data_byte
 			self.offset = self.offset + 1
 			self.checksum1 = self.checksum1 ^ data_byte
@@ -133,7 +136,7 @@ class mspClass:
 				self.c_state = self.MSP_CHECKSUM_V1
 		
 		elif self.c_state == self.MSP_CHECKSUM_V1:
-			#print "MSP_CHECKSUM_V1"
+			# print "MSP_CHECKSUM_V1"
 			if self.checksum1 == data_byte:
 				self.time_between_frames = self.millis() - self.time_last_frame
 				self.time_last_frame = self.millis()
@@ -146,16 +149,21 @@ class mspClass:
 	
 	def mspSerialCmd(self):
 		if self.cmd == self.MSP_SET_RAW_RC:
-			roll =  self.toInt(self.inBuffer[0],self.inBuffer[1])
-			pitch =  self.toInt(self.inBuffer[2],self.inBuffer[3])
-			yaw =  self.toInt(self.inBuffer[4],self.inBuffer[5])
-			throttle =  self.toInt(self.inBuffer[6],self.inBuffer[7])
-			mode =  self.toInt(self.inBuffer[8],self.inBuffer[9])
-			print "got rc_raw data:"+ str(self.time_between_frames)+" roll:" + str(roll) +" pitch:"+ str(pitch) +" yaw:"+ str(yaw) +" throttle:"+ str(throttle) +" mode:"+ str(mode)
+			roll = self.toInt(self.inBuffer[0], self.inBuffer[1])
+			pitch = self.toInt(self.inBuffer[2], self.inBuffer[3])
+			yaw = self.toInt(self.inBuffer[4], self.inBuffer[5])
+			throttle = self.toInt(self.inBuffer[6], self.inBuffer[7])
+			mode = self.toInt(self.inBuffer[8], self.inBuffer[9])
+			print "got rc_raw data:" + str(self.time_between_frames) + " roll:" + str(roll) + " pitch:" + str(pitch) + " yaw:" + str(yaw) + " throttle:" + str(throttle) + " mode:" + str(mode)
+		elif self.cmd == self.MSP_SET_PID:
+			p = self.toInt(self.inBuffer[0], self.inBuffer[1])
+			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
+			d = self.toInt(self.inBuffer[4], self.inBuffer[5])
+			print "got PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)
 		else:
 			print "command not supported"
 			
-	def toInt(self,a,b):
+	def toInt(self, a, b):
 	    value = a & 0xFF;
 	    value |= (b << 8) & 0xFFFF;
 	    return 	value
@@ -294,6 +302,13 @@ def xor(data):
 	return erg
 
 
+def setPid(p, i, d):
+	data = [
+		0x00FF & p, p >> 8,
+		0x00FF & i, i >> 8,
+		0x00FF & d, d >> 8,
+	]
+	device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mpsPort.MSP_SET_PID, data), wait_for_response=True)  # RC SET PID
 
 
 def handle_data(handle, value):
@@ -301,16 +316,15 @@ def handle_data(handle, value):
 		mpsPort.mspProcessReceivedData(value[i])
 
 	if mpsPort.c_state == mpsPort.MSP_COMMAND_RECEIVED:
-
 		
-		#print "MSP_COMMAND_RECEIVED"
+		# print "MSP_COMMAND_RECEIVED"
 		mpsPort.mspSerialCmd()
 		mpsPort.c_state = mpsPort.MSP_IDLE
 		
 	if withConfig:
 		conn.sendall(value)
 	
-	#print("Received datahex : %s" % hexlify(value))
+	# print("Received datahex : %s" % hexlify(value))
 
 
 def connect():
@@ -358,6 +372,9 @@ try:
 	    device = connect()
  	     
 	device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
+	# set PID values
+	# 800,10,500
+	setPid(600, 10, 500)
 	timer = millis()
 	while True:
 		

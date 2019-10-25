@@ -50,7 +50,7 @@ u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance)
     s16_t derivative = error - last_error;
 
     s16_t kp = constrain(altHold.P * error, -250, +250);
-    s16_t ki = constrain(altHold.I * integral, -250, +250);
+    s16_t ki = constrain(altHold.I * integral, -500, +500);
     s16_t kd = constrain(altHold.D * derivative, -250, +250);
 
     thrust_alt = kp + ki + kd;
@@ -62,12 +62,18 @@ u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance)
     return 0;
 }
 
+void setPID(u16_t p, u16_t i, u16_t d)
+{
+    altHold.P = ((float) p) / 1000;
+    altHold.I = ((float) i) / 1000;
+    altHold.D = ((float) d) / 1000;
+    printk("\n------------------- \n set pid %d %d %d \n-------------------\n",p,i,d);
+}
+
 static int init_Controller(struct device *dev)
 {
     ARG_UNUSED(dev);
-    altHold.P = 0.8f;
-    altHold.I = 0.01f;
-    altHold.D = 5.0f;
+    setPID(800, 10, 5000);
     return 0;
 }
 
