@@ -289,11 +289,18 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
         for (int i = 0; i < CHAN; i++) {
             uint16_t data = chan[i];
 
-            if (chan[MODE - 1] > 1600 && i == (THR - 1)) { // altHoldMode
-                u16_t t = constrain(data + thrust_alt, 1100, 1800);
+            if (i == (THR - 1)) { // MODE Switch
+                u16_t t = data;
+                if(chan[MODE - 1] < 1600){ // no altHoldMode
+                    resetController();
+                    t = constrain(rcdata.thrust - 10, 1000, 1800); // landing
+                } else {
+                    t = constrain(data + thrust_alt, 1100, 1800);
+                    //printk("[%d %i %d]", data, thrust_alt, t);
+                }
                 rcdata.thrust = t;
-                //printk("[%d %i %d]", data, thrust_alt, t);
                 sbufWriteU16(dst, t);
+
             } else {
                 rcdata.raw[i] = data;
                 //printk("%d ", data);
@@ -329,6 +336,7 @@ static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
             for (int i = 0; i < CHAN; i++) {
                 sbufWriteU16(dst, rcdata.raw[i]);
             }
+            sbufWriteU16(dst, thrust_alt);
             return true;
         case MSP_NAME:
             sbufWriteU8(dst, 'X');

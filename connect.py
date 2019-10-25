@@ -154,7 +154,9 @@ class mspClass:
 			yaw = self.toInt(self.inBuffer[4], self.inBuffer[5])
 			throttle = self.toInt(self.inBuffer[6], self.inBuffer[7])
 			mode = self.toInt(self.inBuffer[8], self.inBuffer[9])
-			#print "got rc_raw data:" + str(self.time_between_frames) + " roll:" + str(roll) + " pitch:" + str(pitch) + " yaw:" + str(yaw) + " throttle:" + str(throttle) + " mode:" + str(mode)
+			thalt = self.toInt(self.inBuffer[10], self.inBuffer[11])
+			#if mode > 1600:
+			print str(self.time_between_frames)+";" + str(roll) + ";" + str(pitch) + ";" + str(yaw) + ";" + str(throttle) + ";" + str(thalt)
 		elif self.cmd == self.MSP_SET_PID:
 			p = self.toInt(self.inBuffer[0], self.inBuffer[1])
 			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
@@ -370,8 +372,8 @@ def msp_data(device, data):
         return None
 
 
-P = 100
-I = 5
+P = 400
+I = 15
 D = 5000
 try:
 	

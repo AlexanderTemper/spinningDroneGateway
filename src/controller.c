@@ -19,12 +19,16 @@ u16_t getEstimatedAltitude(u16_t distance)
     //printk("%i,%i,", distance,(int)last_distance);
     return (u16_t) last_distance;
 }
+u32_t previousC;
+s16_t last_error;
+s16_t integral;
 
+void resetController(){
+    integral = 0;
+    thrust_alt = 0;
+}
 u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance)
 {
-    static u32_t previousC;
-    static s16_t last_error;
-    static s16_t integral;
 
     u32_t currentC = k_cycle_get_32();
     u32_t dTime;
@@ -45,11 +49,11 @@ u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance)
 
     s16_t error = target_distance - distance;
 
-    integral = constrain(integral + error, -10000, +10000);
+    integral = constrain(integral + error, -32000, +32000);
 
     s16_t derivative = error - last_error;
 
-    s16_t kp = constrain(altHold.P * error, -250, +250);
+    s16_t kp = constrain(altHold.P * error, -400, +400);
     s16_t ki = constrain(altHold.I * integral, -500, +500);
     s16_t kd = constrain(altHold.D * derivative, -250, +250);
 
