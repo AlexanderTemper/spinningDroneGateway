@@ -33,6 +33,8 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
 {
     if (mspPort->portType == MSP_PORT_PC) {
         switch (mspPort->cmdMSP) {
+        case MSP_ATTITUDE:
+            return MSP_GATEWAY_PACKET_REPLY;
         case MSP_SET_RAW_RC:
             return MSP_GATEWAY_PACKET_MODIFY_AND_REPLY;
         case MSP_SET_PID:
@@ -44,6 +46,8 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
 
     if (mspPort->portType == MSP_PORT_FC) {
         switch (mspPort->cmdMSP) {
+        case MSP_ATTITUDE:
+            return MSP_GATEWAY_PACKET_CONSUME;
         case MSP_SET_RAW_RC:
             return MSP_GATEWAY_PACKET_CONSUME;
         }
@@ -229,7 +233,7 @@ static uint8_t mspSerialChecksumBuf(uint8_t checksum, const uint8_t *data, int l
     }
     return checksum;
 }
-static int mspSerialEncode(mspPort_t *msp, mspPacket_t *packet)
+int mspSerialEncode(mspPort_t *msp, mspPacket_t *packet)
 {
     const int dataLen = sbufBytesRemaining(&packet->buf);
     uint8_t hdrBuf[16] = {
@@ -269,6 +273,15 @@ union rcdata_u {
     u16_t raw[5];
 } rcdata;
 
+union att_data_u {
+    struct {
+        int16_t roll;
+        int16_t pitch;
+        int16_t yaw;
+    };
+    int16_t raw[3];
+} att_data;
+
 static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 {
     sbuf_t srcBuffer;
@@ -291,7 +304,7 @@ static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 
             if (i == (THR - 1)) { // MODE Switch
                 u16_t t = data;
-                if(chan[MODE - 1] < 1600){ // no altHoldMode
+                if (chan[MODE - 1] < 1600) { // no altHoldMode
                     resetController();
                     t = constrain(rcdata.thrust - 10, 1000, 1800); // landing
                 } else {
@@ -323,15 +336,21 @@ static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
     // Messages Replied to pc
     if (mspPort->portType == MSP_PORT_PC) {
         switch (mspPort->cmdMSP) {
+        case MSP_ATTITUDE:
+            sbufWriteU16(dst, att_data.roll);
+            sbufWriteU16(dst, att_data.pitch);
+            sbufWriteU16(dst, att_data.yaw);
+            return true;
         case MSP_SET_PID:
             ;
             uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
             if (channelCount == 3) {
                 setPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
-                sbufWriteU16(dst, (u16_t) (altHold.P * 1000));
-                sbufWriteU16(dst, (u16_t) (altHold.I * 1000));
-                sbufWriteU16(dst, (u16_t) (altHold.D * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.P * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.I * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.D * 1000));
             }
+            return true;
         case MSP_SET_RAW_RC:
             for (int i = 0; i < CHAN; i++) {
                 sbufWriteU16(dst, rcdata.raw[i]);
@@ -388,13 +407,59 @@ static void mspReply(mspPort_t *mspPort)
     mspSerialEncode(mspPort, &reply);
 }
 
+//bool is_request_pending = false;
+//s64_t last_att_sample_time = 0;
+//u32_t cycles_spent = 0;
 static bool mspConsume(mspPort_t *mspPort)
 {
+    sbuf_t srcBuffer;
+    sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
     switch (mspPort->cmdMSP) {
     case MSP_SET_RAW_RC:
         return true;
+    case MSP_ATTITUDE:
+        ;
+        uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
+
+        if (channelCount == 3) {
+            att_data.roll = sbufReadU16(src);
+            att_data.pitch = sbufReadU16(src);
+            att_data.yaw = sbufReadU16(src);
+            //printk("att %d %d %d\n", att_data.roll, att_data.pitch, att_data.yaw);
+        }
+        //printk("att took %u|%d\n",  SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000,k_uptime_delta_32(&last_att_sample_time));
+        //is_request_pending = false;
+
+        return true;
     }
+
     return false;
+}
+
+void fetchAttitude()
+{
+//    if(is_request_pending){
+//        //printk("request pending \n");
+//        return;
+//    }
+
+//    is_request_pending = true;
+//    last_att_sample_time = k_uptime_get_32();
+//    cycles_spent = k_cycle_get_32();
+
+    mspPort_t *mspPort = &FC_msp;
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t ask = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = MSP_ATTITUDE,
+            .direction = '<', };
+    uint8_t *outBufHead = ask.buf.ptr;
+
+    sbufSwitchToReader(&ask.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort, &ask);
+
 }
 
 static void mspSerialProcess(mspPort_t *mspPort)

@@ -7,7 +7,7 @@ from inputs import get_gamepad
 from threading import Thread
 
 withConfig = False;
-taranis = True;
+taranis = TRUE;
 if withConfig:
 	import socket
 	
@@ -49,7 +49,6 @@ def progress(count, total, status=''):
 def millis():
 	return int(round(time.time() * 1000))
 
-
 class mspClass:
 	# states
 	MSP_IDLE = 0
@@ -77,10 +76,16 @@ class mspClass:
 	
 	MSP_SET_RAW_RC = 200
 	MSP_SET_PID = 202
+	MSP_ATTITUDE = 108
+	MSP_DEBUGMSG = 253
 	
 	time_last_frame = 0
 	time_between_frames = 0;
 	
+	def twos_comp_16(self,val):
+	    if (val & 0x8000): # if sign bit is set e.g., 8bit: 128-255
+	        val = val - (0x10000)        # compute negative value
+	    return val 
 	def millis(self):
 		return int(round(time.time() * 1000))
 	
@@ -162,6 +167,14 @@ class mspClass:
 			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
 			d = self.toInt(self.inBuffer[4], self.inBuffer[5])
 			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)+"\n-------------------------\n"
+		elif self.cmd == self.MSP_ATTITUDE:
+			estRoll = self.twos_comp_16(self.toInt(self.inBuffer[0], self.inBuffer[1]))
+			estPtich = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
+			estYaw = self.twos_comp_16(self.toInt(self.inBuffer[4], self.inBuffer[5]))
+			print "got EST ATT data:" + str(self.time_between_frames) + " ROLL:" + str(estRoll) + " PITCH:" + str(estPtich) + " YAW:" + str(estYaw)
+		elif self.cmd == self.MSP_DEBUGMSG:
+		 	mainloopTime= self.toInt(self.inBuffer[0], self.inBuffer[1])
+			print "got EST TIMING data:" + str(self.time_between_frames) + " MainLoop:" + str(mainloopTime)
 		else:
 			print "command not supported"
 			
@@ -171,7 +184,7 @@ class mspClass:
 	    return 	value
     
     
-mpsPort = mspClass()
+mspPort = mspClass()
 
 
 class ps3joyClass:
@@ -313,7 +326,7 @@ def setPid(p, i, d):
 	if not device:
 		return None
 	try:
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mpsPort.MSP_SET_PID, data), wait_for_response=True)  # RC SET PID
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_SET_PID, data), wait_for_response=True)  # RC SET PID
 		return True
 	except pygatt.exceptions.NotConnectedError:            
 		print("write failed")
@@ -323,13 +336,13 @@ def setPid(p, i, d):
 
 def handle_data(handle, value):
 	for i in range (0, len(value)):
-		mpsPort.mspProcessReceivedData(value[i])
+		mspPort.mspProcessReceivedData(value[i])
 
-	if mpsPort.c_state == mpsPort.MSP_COMMAND_RECEIVED:
+	if mspPort.c_state == mspPort.MSP_COMMAND_RECEIVED:
 		
 		# print "MSP_COMMAND_RECEIVED"
-		mpsPort.mspSerialCmd()
-		mpsPort.c_state = mpsPort.MSP_IDLE
+		mspPort.mspSerialCmd()
+		mspPort.c_state = mspPort.MSP_IDLE
 		
 	if withConfig:
 		conn.sendall(value)
@@ -351,10 +364,13 @@ def send_data():
 	if not device:
 		return None
 	try:
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200, ps3joy.todataArray()), wait_for_response=False)  # RC SET ROW
+		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200, ps3joy.todataArray()), wait_for_response=False)  # RC SET ROW
 		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(105,[]), wait_for_response=False)#RC SET ROW
 		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(10,[]), wait_for_response=False)#Reply Gateway
 		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,5,20,0,1,2,3,4,xor([5,20,0,1,2,3,4])], wait_for_response=False)#JUST PASSTHRO
+		
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_ATTITUDE,[]), wait_for_response=False)
+		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_DEBUGMSG,[]), wait_for_response=False)
 		return True
 	except pygatt.exceptions.NotConnectedError:            
 		print("write failed")

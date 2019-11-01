@@ -81,4 +81,6 @@ static int init_Controller(struct device *dev)
     return 0;
 }
 
+
+
 SYS_INIT( init_Controller, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);

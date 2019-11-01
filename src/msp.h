@@ -98,4 +98,5 @@ extern mspPort_t FC_msp;
 
 
 void processMSP(void);
+void fetchAttitude(void);
 #endif /*MSP_H_*/

@@ -116,13 +116,15 @@ void main(void)
     init_ringbuffer(&FC_rx);
     init_ringbuffer(&FC_tx);
 
+    gpio_pin_write(dev, LED, 1);
     //u32_t cycles_spent = 0;
+    s64_t last_attitudeFetch_time = 0;
+
     while (1) {
 
-        gpio_pin_write(dev, LED, 1);
         if (fetch_distance(dev_vlx, &distance_mm) == 0) {
 
-            getAltitudeThrottle(getEstimatedAltitude(distance_mm),200);
+            getAltitudeThrottle(getEstimatedAltitude(distance_mm), 200);
             //printf("distance is %i|%i took %u\n", getEstimatedAltitude(distance_mm), distance_mm, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
             //cycles_spent = k_cycle_get_32();
         }
@@ -132,5 +134,13 @@ void main(void)
         bluetoothUartNotify();
 
 
+        int delta = k_uptime_get_32()-last_attitudeFetch_time;
+        if(delta >= 10){
+            //printk("delta %d\n",delta);
+            last_attitudeFetch_time = k_uptime_get_32();
+            fetchAttitude();
+        }
     }
 }
+
+
