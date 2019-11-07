@@ -7,7 +7,7 @@ from inputs import get_gamepad
 from threading import Thread
 
 withConfig = False;
-taranis = TRUE;
+taranis = True;
 if withConfig:
 	import socket
 	

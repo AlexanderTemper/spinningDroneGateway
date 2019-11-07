@@ -214,7 +214,57 @@ exit:
     return ret;
 }
 
+
+
 static int vl53l0x_init(struct device *dev)
+{
+    struct vl53l0x_data *drv_data = dev->driver_data;
+    VL53L0X_Error ret;
+    u16_t vl53l0x_id = 0U;
+    VL53L0X_DeviceInfo_t vl53l0x_dev_info;
+
+    /* Get info from sensor */
+    (void)memset(&vl53l0x_dev_info, 0, sizeof(VL53L0X_DeviceInfo_t));
+
+    ret = VL53L0X_GetDeviceInfo(&drv_data->vl53l0x, &vl53l0x_dev_info);
+    if (ret < 0) {
+        LOG_ERR("Could not get info from device.");
+        return -ENODEV;
+    }
+
+    LOG_DBG("VL53L0X_GetDeviceInfo = %d", ret);
+    LOG_DBG("   Device Name : %s", vl53l0x_dev_info.Name);
+    LOG_DBG("   Device Type : %s", vl53l0x_dev_info.Type);
+    LOG_DBG("   Device ID : %s", vl53l0x_dev_info.ProductId);
+    LOG_DBG("   ProductRevisionMajor : %d",
+            vl53l0x_dev_info.ProductRevisionMajor);
+    LOG_DBG("   ProductRevisionMinor : %d",
+            vl53l0x_dev_info.ProductRevisionMinor);
+
+    ret = VL53L0X_RdWord(&drv_data->vl53l0x,
+                 VL53L0X_REG_WHO_AM_I,
+                 (uint16_t *) &vl53l0x_id);
+    if ((ret < 0) || (vl53l0x_id != VL53L0X_CHIP_ID)) {
+        LOG_ERR("Issue on device identification");
+        return -ENOTSUP;
+    }
+
+    /* sensor init */
+    ret = VL53L0X_DataInit(&drv_data->vl53l0x);
+    if (ret < 0) {
+        LOG_ERR("VL53L0X_DataInit return error (%d)", ret);
+        return -ENOTSUP;
+    }
+
+    ret = vl53l0x_setup_continous(dev);
+    if (ret < 0) {
+        return -ENOTSUP;
+    }
+
+    return 0;
+}
+
+static int vl53l0x_init1(struct device *dev)
 {
 	struct vl53l0x_data *drv_data = dev->driver_data;
 	VL53L0X_Error ret;
@@ -222,30 +272,6 @@ static int vl53l0x_init(struct device *dev)
 	VL53L0X_DeviceInfo_t vl53l0x_dev_info;
 
 	LOG_DBG("enter in %s", __func__);
-
-#ifdef CONFIG_VL53L0X_XSHUT_CONTROL_ENABLE
-	struct device *gpio;
-
-	/* configure and set VL53L0X_XSHUT_Pin */
-	gpio = device_get_binding(CONFIG_VL53L0X_XSHUT_GPIO_DEV_NAME);
-	if (gpio == NULL) {
-		LOG_ERR("Could not get pointer to %s device.",
-		CONFIG_VL53L0X_XSHUT_GPIO_DEV_NAME);
-		return -EINVAL;
-	}
-
-	if (gpio_pin_configure(gpio,
-			      CONFIG_VL53L0X_XSHUT_GPIO_PIN_NUM,
-			      GPIO_DIR_OUT | GPIO_PUD_PULL_UP) < 0) {
-		LOG_ERR("Could not configure GPIO %s %d).",
-			CONFIG_VL53L0X_XSHUT_GPIO_DEV_NAME,
-			CONFIG_VL53L0X_XSHUT_GPIO_PIN_NUM);
-		return -EINVAL;
-	}
-
-	gpio_pin_write(gpio, CONFIG_VL53L0X_XSHUT_GPIO_PIN_NUM, 1);
-	k_sleep(100);
-#endif
 
 	drv_data->i2c = device_get_binding(DT_INST_0_ST_VL53L0X_BUS_NAME);
 	if (drv_data->i2c == NULL) {
@@ -257,51 +283,39 @@ static int vl53l0x_init(struct device *dev)
 	drv_data->vl53l0x.i2c = drv_data->i2c;
 	drv_data->vl53l0x.I2cDevAddr = DT_INST_0_ST_VL53L0X_BASE_ADDRESS;
 
-	/* Get info from sensor */
-	(void)memset(&vl53l0x_dev_info, 0, sizeof(VL53L0X_DeviceInfo_t));
+	return vl53l0x_init(dev);
+}
+static int vl53l0x_init2(struct device *dev)
+{
+    struct vl53l0x_data *drv_data = dev->driver_data;
+    VL53L0X_Error ret;
+    u16_t vl53l0x_id = 0U;
+    VL53L0X_DeviceInfo_t vl53l0x_dev_info;
 
-	ret = VL53L0X_GetDeviceInfo(&drv_data->vl53l0x, &vl53l0x_dev_info);
-	if (ret < 0) {
-		LOG_ERR("Could not get info from device.");
-		return -ENODEV;
-	}
+    LOG_DBG("enter in %s", __func__);
 
-	LOG_DBG("VL53L0X_GetDeviceInfo = %d", ret);
-	LOG_DBG("   Device Name : %s", vl53l0x_dev_info.Name);
-	LOG_DBG("   Device Type : %s", vl53l0x_dev_info.Type);
-	LOG_DBG("   Device ID : %s", vl53l0x_dev_info.ProductId);
-	LOG_DBG("   ProductRevisionMajor : %d",
-		    vl53l0x_dev_info.ProductRevisionMajor);
-	LOG_DBG("   ProductRevisionMinor : %d",
-		    vl53l0x_dev_info.ProductRevisionMinor);
+    drv_data->i2c = device_get_binding(DT_INST_1_ST_VL53L0X_BUS_NAME);
+    if (drv_data->i2c == NULL) {
+        LOG_ERR("Could not get pointer to %s device.",
+            DT_INST_1_ST_VL53L0X_BUS_NAME);
+        return -EINVAL;
+    }
 
-	ret = VL53L0X_RdWord(&drv_data->vl53l0x,
-			     VL53L0X_REG_WHO_AM_I,
-			     (uint16_t *) &vl53l0x_id);
-	if ((ret < 0) || (vl53l0x_id != VL53L0X_CHIP_ID)) {
-		LOG_ERR("Issue on device identification");
-		return -ENOTSUP;
-	}
+    drv_data->vl53l0x.i2c = drv_data->i2c;
+    drv_data->vl53l0x.I2cDevAddr = DT_INST_1_ST_VL53L0X_BASE_ADDRESS;
 
-	/* sensor init */
-	ret = VL53L0X_DataInit(&drv_data->vl53l0x);
-	if (ret < 0) {
-		LOG_ERR("VL53L0X_DataInit return error (%d)", ret);
-		return -ENOTSUP;
-	}
-
-	ret = vl53l0x_setup_continous(dev);
-	if (ret < 0) {
-		return -ENOTSUP;
-	}
-
-	return 0;
+    return vl53l0x_init(dev);
 }
 
 
 static struct vl53l0x_data vl53l0x_driver;
+static struct vl53l0x_data vl53l0x_driver2;
 
-DEVICE_AND_API_INIT(vl53l0x, DT_INST_0_ST_VL53L0X_LABEL, vl53l0x_init, &vl53l0x_driver,
+DEVICE_AND_API_INIT(vl53l0x, DT_INST_0_ST_VL53L0X_LABEL, vl53l0x_init1, &vl53l0x_driver,
 		    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,
 		    &vl53l0x_api_funcs);
+
+DEVICE_AND_API_INIT(vl53l0x1, DT_INST_1_ST_VL53L0X_LABEL, vl53l0x_init2, &vl53l0x_driver2,
+            NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,
+            &vl53l0x_api_funcs);
 
