@@ -166,7 +166,16 @@ void bluetoothUartNotify()
         size_t gesamt = ring_buf_capacity_get(ringbuf);
         size_t frei = ring_buf_space_get(ringbuf);
         if (((gesamt - frei) > 20) || timeout) { // Wait for data
+
             len = ring_buf_get(ringbuf, buf, sizeof(buf));
+//            printk("get %i data to send ", len);
+//            const char *bufl = buf;
+//
+//            for (char e = 0; e < len; e++) {
+//                printk("0x%X ", *bufl);
+//                bufl++;
+//            }
+//            printk("\n");
             bt_gatt_notify(NULL, &drone_svc.attrs[1], &buf, len);
         }
     }

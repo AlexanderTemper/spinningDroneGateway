@@ -124,9 +124,9 @@ void main(void)
     printk("Hello World!\n");
 
     init_sensor(&frontFace);
-    frontFace.dev = device_get_binding(DT_INST_0_ST_VL53L0X_LABEL);
+    frontFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
     init_sensor(&downFace);
-    downFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
+    downFace.dev = device_get_binding(DT_INST_0_ST_VL53L0X_LABEL);
     if (frontFace.dev == NULL) {
         printk("Could not get VL53L0X frontFace\n");
         return;
@@ -145,32 +145,44 @@ void main(void)
     gpio_pin_write(dev, LED, 1);
     u32_t cycles_spent = 0;
     u32_t cycles_spent1 = 0;
-    s64_t last_attitudeFetch_time = 0;
+#define MSP_ATTITUDE_FETCH_TIME 10
+    s64_t attitudeFetchTime = 0;
+
+#define MSP_RC_TO_FC 20
+    s64_t rcSendToFCTime = 0;
+
+    s64_t currentTime = 0;
 
     while (1) {
 
+        bluetoothUartNotify();
+        currentTime = k_uptime_get_32();
+
         if (fetch_distance(&frontFace) == 0) {
             //getAltitudeThrottle(getEstimatedAltitude(distance_mm), 200);
-            printf("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+            //printf("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
             cycles_spent = k_cycle_get_32();
         }
         if (fetch_distance(&downFace) == 0) {
-            //getAltitudeThrottle(getEstimatedAltitude(distance_mm), 200);
-            printf("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
+            getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
+            //printf("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
             cycles_spent1 = k_cycle_get_32();
         }
-        //printf("distance %i %i\n", frontFace.distance, downFace.distance,SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
 
         processMSP();
 
-        bluetoothUartNotify();
-
-        int delta = k_uptime_get_32() - last_attitudeFetch_time;
-        if (delta >= 10) {
+        if (currentTime >= attitudeFetchTime) {
+            attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
             //printk("delta %d\n",delta);
-            last_attitudeFetch_time = k_uptime_get_32();
             fetchAttitude();
         }
+        if (currentTime >= rcSendToFCTime) {
+            rcSendToFCTime = currentTime + MSP_RC_TO_FC;
+            //printk("delta %d\n",delta);
+            sendRCtoFC();
+        }
+
+
     }
 }
 

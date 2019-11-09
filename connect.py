@@ -49,6 +49,7 @@ def progress(count, total, status=''):
 def millis():
 	return int(round(time.time() * 1000))
 
+
 class mspClass:
 	# states
 	MSP_IDLE = 0
@@ -82,10 +83,11 @@ class mspClass:
 	time_last_frame = 0
 	time_between_frames = 0;
 	
-	def twos_comp_16(self,val):
-	    if (val & 0x8000): # if sign bit is set e.g., 8bit: 128-255
-	        val = val - (0x10000)        # compute negative value
+	def twos_comp_16(self, val):
+	    if (val & 0x8000):  # if sign bit is set e.g., 8bit: 128-255
+	        val = val - (0x10000)  # compute negative value
 	    return val 
+
 	def millis(self):
 		return int(round(time.time() * 1000))
 	
@@ -158,22 +160,23 @@ class mspClass:
 			pitch = self.toInt(self.inBuffer[2], self.inBuffer[3])
 			yaw = self.toInt(self.inBuffer[4], self.inBuffer[5])
 			throttle = self.toInt(self.inBuffer[6], self.inBuffer[7])
-			mode = self.toInt(self.inBuffer[8], self.inBuffer[9])
-			thalt = self.toInt(self.inBuffer[10], self.inBuffer[11])
-			#if mode > 1600:
-			print str(self.time_between_frames)+";" + str(roll) + ";" + str(pitch) + ";" + str(yaw) + ";" + str(throttle) + ";" + str(thalt)
+			arm = self.toInt(self.inBuffer[8], self.inBuffer[9])
+			mode = self.toInt(self.inBuffer[10], self.inBuffer[11])
+			thalt = self.toInt(self.inBuffer[12], self.inBuffer[13])
+			# if mode > 1600:
+			print str(self.time_between_frames) + ";" + str(roll) + ";" + str(pitch) + ";" + str(yaw) + ";" + str(throttle) + ";" + str(arm) + ";" + str(mode)
 		elif self.cmd == self.MSP_SET_PID:
 			p = self.toInt(self.inBuffer[0], self.inBuffer[1])
 			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
 			d = self.toInt(self.inBuffer[4], self.inBuffer[5])
-			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)+"\n-------------------------\n"
+			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d) + "\n-------------------------\n"
 		elif self.cmd == self.MSP_ATTITUDE:
 			estRoll = self.twos_comp_16(self.toInt(self.inBuffer[0], self.inBuffer[1]))
 			estPtich = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
 			estYaw = self.twos_comp_16(self.toInt(self.inBuffer[4], self.inBuffer[5]))
 			print "got EST ATT data:" + str(self.time_between_frames) + " ROLL:" + str(estRoll) + " PITCH:" + str(estPtich) + " YAW:" + str(estYaw)
 		elif self.cmd == self.MSP_DEBUGMSG:
-		 	mainloopTime= self.toInt(self.inBuffer[0], self.inBuffer[1])
+		 	mainloopTime = self.toInt(self.inBuffer[0], self.inBuffer[1])
 			print "got EST TIMING data:" + str(self.time_between_frames) + " MainLoop:" + str(mainloopTime)
 		else:
 			print "command not supported"
@@ -193,6 +196,7 @@ class ps3joyClass:
 	pitch = 1500
 	roll = 1500
 	arm = 1000
+	mode = 1000
 	timeout = millis()
 	
 	def scale(self, raw):
@@ -218,6 +222,7 @@ class ps3joyClass:
 		self.pitch = 1500
 		self.roll = 1500
 		self.arm = 1000
+		self.mode = 1000
 		
 	def todataArray(self):
 		return [
@@ -226,6 +231,7 @@ class ps3joyClass:
 			0x00FF & self.yaw, self.yaw >> 8,
 			0x00FF & self.throttle, self.throttle >> 8,
 			0x00FF & self.arm, self.arm >> 8,
+			0x00FF & self.mode, self.mode >> 8,
 			]
 		
 	def update(self, events):
@@ -241,8 +247,10 @@ class ps3joyClass:
 					self.roll = self.scale(event.state + 127)
 				elif event.code == 'ABS_RX':
 					self.yaw = self.scale(event.state + 127)
-				elif event.code == 'ABS_RZ':
+				elif event.code == 'ABS_RY':
 					self.arm = self.scale(event.state + 127)
+				elif event.code == 'ABS_RZ':
+					self.mode = self.scale(event.state + 127)
 			else:
 				if event.code == 'ABS_X':
 					self.yaw = self.scale(event.state)
@@ -331,7 +339,6 @@ def setPid(p, i, d):
 	except pygatt.exceptions.NotConnectedError:            
 		print("write failed")
 		return None
-	
 
 
 def handle_data(handle, value):
@@ -364,13 +371,13 @@ def send_data():
 	if not device:
 		return None
 	try:
-		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200, ps3joy.todataArray()), wait_for_response=False)  # RC SET ROW
+		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(200, ps3joy.todataArray()), wait_for_response=False)  # RC SET ROW
 		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(105,[]), wait_for_response=False)#RC SET ROW
 		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(10,[]), wait_for_response=False)#Reply Gateway
 		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", [0x24,0x4d,0x3c,5,20,0,1,2,3,4,xor([5,20,0,1,2,3,4])], wait_for_response=False)#JUST PASSTHRO
 		
-		device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_ATTITUDE,[]), wait_for_response=False)
-		#device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_DEBUGMSG,[]), wait_for_response=False)
+		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_ATTITUDE,[]), wait_for_response=False)
+		# device.char_write("00008882-0000-1000-8000-00805f9b34fb", send_MSP(mspPort.MSP_DEBUGMSG,[]), wait_for_response=False)
 		return True
 	except pygatt.exceptions.NotConnectedError:            
 		print("write failed")

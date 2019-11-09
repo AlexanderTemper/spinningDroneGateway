@@ -267,10 +267,6 @@ static int vl53l0x_init(struct device *dev)
 static int vl53l0x_init1(struct device *dev)
 {
 	struct vl53l0x_data *drv_data = dev->driver_data;
-	VL53L0X_Error ret;
-	u16_t vl53l0x_id = 0U;
-	VL53L0X_DeviceInfo_t vl53l0x_dev_info;
-
 	LOG_DBG("enter in %s", __func__);
 
 	drv_data->i2c = device_get_binding(DT_INST_0_ST_VL53L0X_BUS_NAME);
@@ -288,10 +284,6 @@ static int vl53l0x_init1(struct device *dev)
 static int vl53l0x_init2(struct device *dev)
 {
     struct vl53l0x_data *drv_data = dev->driver_data;
-    VL53L0X_Error ret;
-    u16_t vl53l0x_id = 0U;
-    VL53L0X_DeviceInfo_t vl53l0x_dev_info;
-
     LOG_DBG("enter in %s", __func__);
 
     drv_data->i2c = device_get_binding(DT_INST_1_ST_VL53L0X_BUS_NAME);

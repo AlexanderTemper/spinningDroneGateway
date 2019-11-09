@@ -46,6 +46,11 @@ static void interrupt_handler(void *user_data)
 
     if (uart_irq_rx_ready(dev)) {
         len = uart_fifo_read(dev, buf, sizeof(buf));
+//        printk("RX get ");
+//        for (int i = 0; i < len; i++) {
+//            printk("%d ", buf[i]);
+//        }
+//        printk("\n");
         wrote = ring_buf_put(&ud->rx->rb, buf, len);
         if (wrote < len) {
             drop_tx = drop_tx + (len - wrote);

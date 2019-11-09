@@ -36,7 +36,7 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
         case MSP_ATTITUDE:
             return MSP_GATEWAY_PACKET_REPLY;
         case MSP_SET_RAW_RC:
-            return MSP_GATEWAY_PACKET_MODIFY_AND_REPLY;
+            return MSP_GATEWAY_PACKET_REPLY;
         case MSP_SET_PID:
             return MSP_GATEWAY_PACKET_REPLY;
         case MSP_NAME:
@@ -90,7 +90,7 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
         if (c == '$') {
             mspPort->c_state = MSP_HEADER_START;
         } else {
-            write_data_to_passthroughPort(mspPort, &c, 1);
+            //write_data_to_passthroughPort(mspPort, &c, 1); // TODO passthrough nochmal anschaun probleme wenn Serielle Floatet und uns dan Bluetoth board zumacht
             return false;
         }
         break;
@@ -106,7 +106,7 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
         default:
             data[0] = '$';
             data[1] = c;
-            write_data_to_passthroughPort(mspPort, data, 2);
+            //write_data_to_passthroughPort(mspPort, data, 2);
             mspPort->c_state = MSP_IDLE;
             break;
         }
@@ -125,7 +125,7 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
             data[0] = '$';
             data[1] = 'M';
             data[2] = c;
-            write_data_to_passthroughPort(mspPort, data, 3);
+            //write_data_to_passthroughPort(mspPort, data, 3);
             mspPort->c_state = MSP_IDLE;
             break;
         }
@@ -259,71 +259,17 @@ int mspSerialEncode(mspPort_t *msp, mspPacket_t *packet)
     return mspSendFrame(msp, hdrBuf, hdrLen, sbufPtr(&packet->buf), dataLen, crcBuf, crcLen);
 }
 
-#define CHAN 5
-#define MODE 5
-#define THR 4
-union rcdata_u {
-    struct {
-        u16_t pitch;
-        u16_t roll;
-        u16_t yaw;
-        u16_t thrust;
-        u16_t mode;
-    };
-    u16_t raw[5];
-} rcdata;
 
-union att_data_u {
-    struct {
-        int16_t roll;
-        int16_t pitch;
-        int16_t yaw;
-    };
-    int16_t raw[3];
-} att_data;
 
 static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 {
-    sbuf_t srcBuffer;
-
-    sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
-
-    switch (mspPort->cmdMSP) {
-    case MSP_SET_RAW_RC:
-        ;
-        //printk("MSP_SET_RAW_RC request data ");
-        uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
-
-        u16_t chan[CHAN];
-        for (int i = 0; i < channelCount && i < CHAN; i++) {
-            chan[i] = sbufReadU16(src);
-        }
-
-        for (int i = 0; i < CHAN; i++) {
-            uint16_t data = chan[i];
-
-            if (i == (THR - 1)) { // MODE Switch
-                u16_t t = data;
-                if (chan[MODE - 1] < 1600) { // no altHoldMode
-                    resetController();
-                    t = constrain(rcdata.thrust - 10, 1000, 1800); // landing
-                } else {
-                    t = constrain(data + thrust_alt, 1100, 1800);
-                    //printk("[%d %i %d]", data, thrust_alt, t);
-                }
-                rcdata.thrust = t;
-                sbufWriteU16(dst, t);
-
-            } else {
-                rcdata.raw[i] = data;
-                //printk("%d ", data);
-                sbufWriteU16(dst, data);
-            }
-        }
-
-        //printk("\n");
-        return true;
-    }
+//    sbuf_t srcBuffer;
+//
+//    sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
+//
+//    switch (mspPort->cmdMSP) {
+//
+//    }
     printk("modify_data connot find cmd\n");
     return false;
 }
@@ -352,8 +298,14 @@ static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
             }
             return true;
         case MSP_SET_RAW_RC:
-            for (int i = 0; i < CHAN; i++) {
-                sbufWriteU16(dst, rcdata.raw[i]);
+            if ((mspPort->dataSize / sizeof(uint16_t)) != RC_CHANAL_COUNT) {
+                printk("error rc Frame");
+                return false;
+            }
+            rc_data_frame_received(src);
+            //printk("\n");
+            for (int i = 0; i < RC_CHANAL_COUNT; i++) {
+                sbufWriteU16(dst, rcControl.rcdata.raw[i]);
             }
             sbufWriteU16(dst, thrust_alt);
             return true;
@@ -459,6 +411,32 @@ void fetchAttitude()
 
     sbufSwitchToReader(&ask.buf, outBufHead); // change streambuf direction
     mspSerialEncode(mspPort, &ask);
+
+}
+
+void sendRCtoFC()
+{
+    mspPort_t *mspPort = &FC_msp;
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t rc = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = MSP_SET_RAW_RC,
+            .direction = '<', };
+    uint8_t *outBufHead = rc.buf.ptr;
+
+    sbuf_t *dst = &rc.buf;
+
+    sbufWriteU16(dst, rcControl.rcdata.roll);
+    sbufWriteU16(dst, rcControl.rcdata.pitch);
+    sbufWriteU16(dst, rcControl.rcdata.yaw);
+    sbufWriteU16(dst, rcControl.rcdata.throttle);
+    sbufWriteU16(dst, rcControl.rcdata.arm);
+    sbufWriteU16(dst, 0); // Flight Mode < 500 == lvl mode
+
+    sbufSwitchToReader(&rc.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort, &rc);
 
 }
 
