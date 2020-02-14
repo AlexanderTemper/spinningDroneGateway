@@ -6,6 +6,32 @@
 #define ARM_SWITCH 4
 #define MODE_SWITCH 5
 
+typedef enum {
+    FRONT = 0,
+    LEFT,
+    RIGHT,
+    REAR
+}tofDirection;
+
+
+typedef enum {
+    IDLE = 0, ARMED, HOLD, NORMALIZE
+} flight_mode;
+ extern flight_mode modus;
+
+typedef struct tof_controller_s{
+    int l_error;
+    int integral_e;
+    float derivative1;
+    float derivative2;
+    int range;
+    u32_t time;
+    tofDirection direction;
+    int last_froce;
+} tof_controller_t;
+
+
+extern tof_controller_t tof_front;
 typedef struct altHoldPid_s {
     float P;
     float I;
@@ -53,5 +79,6 @@ u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance);
 void setPID(u16_t p, u16_t i, u16_t d);
 void resetController();
 void rc_data_frame_received(sbuf_t *src);
+void tick();
 
 #endif /*CONTROLLER_H_*/

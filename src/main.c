@@ -46,6 +46,8 @@ typedef struct {
 distance frontFace;
 distance downFace;
 
+tof_controller_t tof_front;
+
 void init_sensor(distance *dis)
 {
     dis->d = 0;
@@ -61,8 +63,9 @@ void init_sensor(distance *dis)
  * -1 unkown error
  * -2 timeout of last valid read
  * -3 senor is recovering distance is last valid read (before recover)
+ * recover == amount of readings after error (out range or unknown error
  */
-int fetch_distance(distance *dis)
+int fetch_distance(distance *dis,int recover)
 {
 
     // last valid value
@@ -84,7 +87,7 @@ int fetch_distance(distance *dis)
         if (dis->sensor_health == 0) {
             dis->sensor_recover++;
 
-            if (dis->sensor_recover == 15) { // ca 500ms
+            if (dis->sensor_recover == recover) {
                 dis->sensor_health = 1;
                 dis->sensor_recover = 0;
             } else { // we still recover
@@ -161,12 +164,20 @@ void main(void)
         bluetoothUartNotify();
         currentTime = k_uptime_get_32();
 
-        if (fetch_distance(&frontFace) == 0) {
-            //getAltitudeThrottle(getEstimatedAltitude(distance_mm), 200);
-            //printf("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+        int ret = fetch_distance(&frontFace,1);
+
+        if (ret == 0) {
+            tof_front.time = (SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+            tof_front.range = frontFace.distance;
             cycles_spent = k_cycle_get_32();
+        } else if(ret == 1) { //work with bufferd data
+            tof_front.time = 0;
+            tof_front.range = frontFace.distance;
+        } else { //did not get valid data
+            tof_front.range = -1;
         }
-        if (fetch_distance(&downFace) == 0) {
+
+        if (fetch_distance(&downFace,15) == 0) {
             getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
             //printf("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
             cycles_spent1 = k_cycle_get_32();
@@ -178,12 +189,19 @@ void main(void)
             attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
             fetchAttitude();
         }
+
+
+        // Process Controller
+        tick();
+
+
         if (currentTime >= rcSendToFCTime) {
             rcSendToFCTime = currentTime + MSP_RC_TO_FC;
             //printk("delta %d\n",delta);
             // TODO make a timeout for the data so if connection is lost the quadcopter is landing
             if(watchdogPC < 50){ //1sec Timeout
                 watchdogPC ++;
+                //printk("rc to fc %i,%i,%i,%i,%i\n", rcControl.rcdata.roll,rcControl.rcdata.pitch,rcControl.rcdata.yaw,rcControl.rcdata.throttle,rcControl.rcdata.arm);
                 sendRCtoFC();
             } else if (watchdogPC == 50) {
                 resetController();

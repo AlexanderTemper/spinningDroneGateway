@@ -11,6 +11,12 @@
 altHoldPid_t altHold;
 rc_control_t rcControl;
 att_data_t att_data;
+u32_t previousC;
+s16_t last_error;
+s16_t integral;
+
+flight_mode modus = IDLE;
+int16_t headFreeModeHold = 0;
 
 u32_t microsDiff(u32_t previousC, u32_t currentC)
 {
@@ -26,21 +32,16 @@ u16_t getEstimatedAltitude(u16_t distance)
     //printk("%i,%i,", distance,(int)last_distance);
     return (u16_t) last_distance;
 }
-u32_t previousC;
-s16_t last_error;
-s16_t integral;
-typedef enum {
-    IDLE = 0, ARMED, HOLD, NORMALIZE
-} flight_mode;
-
-flight_mode modus = IDLE;
-int16_t headFreeModeHold = 0;
-
+// last data from pc
+u16_t chan[RC_CHANAL_COUNT];
 void resetController()
 {
     integral = 0;
     thrust_alt = 0;
     modus = IDLE;
+    for( int i=0;i<RC_CHANAL_COUNT;i++){
+        chan[i] = 0;
+    }
     printk("Controller reseted\n");
 }
 
@@ -51,17 +52,97 @@ void resetHoldMode()
     printk("Reset Hold Mode\n");
 }
 
-
-
-
-void rc_data_frame_received(sbuf_t *src)
+int pushController(tof_controller_t *tof)
 {
-    watchdogPC = 0; // reset Watchdog
-    u16_t chan[RC_CHANAL_COUNT];
-    for (int i = 0; i < RC_CHANAL_COUNT; i++) {
-        chan[i] = sbufReadU16(src);
+    //printk("%i |took %u ms\n",tof->range,tof->time);
+    float cycleTime = tof->time;
+    float pterm = 0.1;
+    float dterm = 0;
+    int offsetSensor = 0; //offset sensor is away from collison
+
+
+    if(tof->range < 0){ // No Sensor Value
+        return 0;
     }
 
+    if(tof->time == 0){ // return old force if sensor data ist not available
+       //printk("no new data available get old data %i , %i\n", tof->range, tof->last_froce);
+       return tof->last_froce;
+    }
+
+    int error = 1000 - (tof->range - offsetSensor);
+    if(error < 0){ // we are not in danger zone
+        return 0;
+    }
+
+
+
+    int ki=0, kp =0, kd = 0;
+    kp = constrain(pterm * error, -500, +500);
+
+    float derivative = ((error - tof->l_error)/cycleTime) * 4000;
+    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
+    tof->derivative2 = tof->derivative1;
+    tof->derivative1 = derivative;
+    float derivativeFiltered = derivativeSum/3;
+    kd = constrain(dterm * derivativeFiltered, -50, +50);
+
+    tof->l_error = error;
+    int force = kp + ki + kd;
+
+    printk("error %i , p %i d, %i = %i\n", error,kp,kd,force);
+    tof->time = 0; // Reset time and save the force (so this can called faster then new data arrives
+    if(force < 0){
+        return 0;
+    }
+    tof->last_froce = force;
+    return tof->last_froce;
+}
+
+void calcPushback (int16_t *roll, int16_t *pitch,tof_controller_t *tof)
+{
+    //ROS_INFO("bevore %i [%i,%i,%i] ",heading - headFreeModeHold, rcCommand[THROTTLE],*roll,*pitch);
+    float radDiff = (att_data.yaw - headFreeModeHold) * M_PI / 180.0f;
+    float cosDiff = cosf(radDiff);
+    float sinDiff = sinf(radDiff);
+
+    int force = 0;
+    force = pushController(tof);
+
+    switch(tof->direction){
+        case FRONT:
+            *roll = -force * sinDiff;
+            *pitch = -force * cosDiff;
+            break;
+        case REAR:
+            *roll = force * sinDiff;
+            *pitch = force * cosDiff;
+            break;
+        case RIGHT:
+            *pitch = force * sinDiff;
+            *roll = -force * cosDiff;
+            break;
+        case LEFT:
+            *pitch = -force * sinDiff;
+            *roll = force * cosDiff;
+            break;
+        default:
+            break;
+    }
+}
+
+void calcHeadFree(int16_t *roll, int16_t *pitch){
+    float radDiff = (att_data.yaw - headFreeModeHold) * M_PI / 180.0f;
+    float cosDiff = cosf(radDiff);
+    float sinDiff = sinf(radDiff);
+
+    int16_t rcCommand_PITCH = *pitch * cosDiff + *roll * sinDiff;
+    *roll = *roll * cosDiff - *pitch * sinDiff;
+    *pitch = rcCommand_PITCH;
+}
+
+void tick()
+{
     if (chan[RC_ARM] < 1600) { // Hard reset
         modus = IDLE;
     }
@@ -83,26 +164,40 @@ void rc_data_frame_received(sbuf_t *src)
             rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE], 1000, 1800);
         }
         break;
-    case HOLD:
+    case HOLD:  // Manipulate RC Data
         if (chan[MODE_SWITCH] < 1200) {
             modus = NORMALIZE;
         } else {
-            float radDiff = (att_data.yaw - headFreeModeHold) * M_PI / 180.0f;
-            float cosDiff = cosf(radDiff);
-            float sinDiff = sinf(radDiff);
-            int16_t roll = chan[RC_ROLL] - 1500;
-            int16_t pitch = chan[RC_PITCH] -1500;
+            // Normalize RC Data
+            int16_t roll = (int16_t) chan[RC_ROLL] - 1500; //norm data to -500..500
+            int16_t pitch = (int16_t) chan[RC_PITCH] -1500;
 
-            int16_t rcCommand_PITCH = pitch * cosDiff + roll * sinDiff;
-            roll = roll * cosDiff - pitch * sinDiff;
-            pitch = rcCommand_PITCH;
-            chan[RC_ROLL] = constrain(roll+1500, 1000, 2000);
-            chan[RC_PITCH] = constrain(pitch+1500, 1000, 2000);
+            // update data with push forces from tof sensors
+            int16_t pushRoll,pushPitch;
+            calcPushback(&pushRoll,&pushPitch,&tof_front);
+            roll = constrain(roll + pushRoll,-500,500);
+            pitch = constrain(pitch + pushPitch,-500,500);
 
+            //printk("Before %i %i \n", roll,pitch);
+            // rotate head free
+            calcHeadFree(&roll,&pitch);
+            //printk("after  %i %i \n", roll,pitch);
 
+            // update throttle bases on altitude  hold
             rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE] + thrust_alt, 1100, 1800);
-            printk("alt hold [%d %i %d]\n", chan[RC_THROTTLE], thrust_alt, rcControl.rcdata.throttle);
-            printk("heading diff [%i] [%d] [%d]\n", (att_data.yaw - headFreeModeHold), att_data.yaw, headFreeModeHold);
+
+
+            // shift rc data back to transmit
+            rcControl.rcdata.roll = constrain(roll+1500, 1000, 2000);
+            rcControl.rcdata.pitch = constrain(pitch+1500, 1000, 2000);
+            rcControl.rcdata.yaw = chan[RC_YAW];
+
+            rcControl.rcdata.arm = chan[RC_ARM];
+            rcControl.rcdata.mode = chan[RC_MODE];
+            //printk("alt hold [%d %i %d]\n", chan[RC_THROTTLE], thrust_alt, rcControl.rcdata.throttle);
+            //printk("heading diff [%i] [%d] [%d]\n", (att_data.yaw - headFreeModeHold), att_data.yaw, headFreeModeHold);
+
+            return;
         }
         break;
     case NORMALIZE:
@@ -110,7 +205,14 @@ void rc_data_frame_received(sbuf_t *src)
             modus = ARMED;
             //printk("landing done\n");
         } else {
-            rcControl.rcdata.throttle = constrain(rcControl.rcdata.throttle - 10, chan[RC_THROTTLE], 1800); // decrease to RC_THRUST
+            // Todo Timeout
+            static s64_t landingTimer =0;
+            s64_t currentTime = k_uptime_get_32();
+            if (currentTime >= landingTimer) {
+                landingTimer = currentTime + 50;
+                rcControl.rcdata.throttle = constrain(rcControl.rcdata.throttle - 10, chan[RC_THROTTLE], 1800); // decrease to RC_THRUST
+            }
+
             //printk("landing [%d]\n", rcControl.rcdata.throttle);
         }
 
@@ -126,6 +228,13 @@ void rc_data_frame_received(sbuf_t *src)
 
     rcControl.rcdata.arm = chan[RC_ARM];
     rcControl.rcdata.mode = chan[RC_MODE];
+}
+void rc_data_frame_received(sbuf_t *src)
+{
+    watchdogPC = 0; // copy data
+    for (int i = 0; i < RC_CHANAL_COUNT; i++) {
+        chan[i] = sbufReadU16(src);
+    }
 }
 
 u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance)
