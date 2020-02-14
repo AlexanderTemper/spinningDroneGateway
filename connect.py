@@ -395,9 +395,9 @@ def msp_data(device, data):
         return None
 
 
-P = 400
-I = 15
-D = 5000
+P = 150
+I = 40
+D = 3000
 try:
 	
 	adapter.start()

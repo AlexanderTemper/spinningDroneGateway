@@ -29,21 +29,34 @@ u16_t getEstimatedAltitude(u16_t distance)
 u32_t previousC;
 s16_t last_error;
 s16_t integral;
-
-void resetController()
-{
-    integral = 0;
-    thrust_alt = 0;
-}
-
 typedef enum {
     IDLE = 0, ARMED, HOLD, NORMALIZE
 } flight_mode;
 
 flight_mode modus = IDLE;
 int16_t headFreeModeHold = 0;
+
+void resetController()
+{
+    integral = 0;
+    thrust_alt = 0;
+    modus = IDLE;
+    printk("Controller reseted\n");
+}
+
+void resetHoldMode()
+{
+    integral = 0;
+    thrust_alt = 0;
+    printk("Reset Hold Mode\n");
+}
+
+
+
+
 void rc_data_frame_received(sbuf_t *src)
 {
+    watchdogPC = 0; // reset Watchdog
     u16_t chan[RC_CHANAL_COUNT];
     for (int i = 0; i < RC_CHANAL_COUNT; i++) {
         chan[i] = sbufReadU16(src);
@@ -64,7 +77,7 @@ void rc_data_frame_received(sbuf_t *src)
     case ARMED:
         if (chan[MODE_SWITCH] >= 1200) {
             modus = HOLD;
-            resetController();
+            resetHoldMode();
             headFreeModeHold = att_data.yaw;
         } else {
             rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE], 1000, 1800);
@@ -88,8 +101,8 @@ void rc_data_frame_received(sbuf_t *src)
 
 
             rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE] + thrust_alt, 1100, 1800);
-            //printk("alt hold [%d %i %d]\n", chan[RC_THROTTLE], thrust_alt, rcControl.rcdata.throttle);
-            //printk("heading diff [%i] [%d] [%d]\n", (att_data.yaw - headFreeModeHold), att_data.yaw, headFreeModeHold);
+            printk("alt hold [%d %i %d]\n", chan[RC_THROTTLE], thrust_alt, rcControl.rcdata.throttle);
+            printk("heading diff [%i] [%d] [%d]\n", (att_data.yaw - headFreeModeHold), att_data.yaw, headFreeModeHold);
         }
         break;
     case NORMALIZE:

@@ -20,6 +20,7 @@ extern ringbuffer_t  FC_tx;
 
 extern u16_t distance_mm;
 extern s16_t thrust_alt;
+extern u8_t watchdogPC;
 
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 

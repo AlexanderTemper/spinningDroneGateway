@@ -25,6 +25,7 @@
 uint16_t distance_mm = 0;
 uint16_t distance2_mm = 0;
 s16_t thrust_alt = 0;
+u8_t watchdogPC = 0;
 
 // global definitions
 ringbuffer_t PC_rx;
@@ -153,6 +154,8 @@ void main(void)
 
     s64_t currentTime = 0;
 
+
+
     while (1) {
 
         bluetoothUartNotify();
@@ -173,13 +176,20 @@ void main(void)
 
         if (currentTime >= attitudeFetchTime) {
             attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
-            //printk("delta %d\n",delta);
             fetchAttitude();
         }
         if (currentTime >= rcSendToFCTime) {
             rcSendToFCTime = currentTime + MSP_RC_TO_FC;
             //printk("delta %d\n",delta);
-            sendRCtoFC();
+            // TODO make a timeout for the data so if connection is lost the quadcopter is landing
+            if(watchdogPC < 50){ //1sec Timeout
+                watchdogPC ++;
+                sendRCtoFC();
+            } else if (watchdogPC == 50) {
+                resetController();
+                printk("Watchdog was not reseted\n");
+                watchdogPC ++;
+            }
         }
 
 
