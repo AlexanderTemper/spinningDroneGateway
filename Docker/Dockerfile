@@ -31,11 +31,11 @@ RUN dpkg -i tmp/dtc.deb
 RUN apt-get install -f
 
 # Install the Zephyr Software Development Kit (SDK)
-RUN curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.10.3/zephyr-sdk-0.10.3-setup.run -o tmp/zephyr-sdk-0.10.3-setup.run && chmod +x tmp/zephyr-sdk-0.10.3-setup.run
-RUN tmp/zephyr-sdk-0.10.3-setup.run -- -d /root/zephyr-sdk-0.10.3
+RUN curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.11.1/zephyr-sdk-0.11.1-setup.run -o tmp/zephyr-sdk-0.11.1-setup.run && chmod +x tmp/zephyr-sdk-0.11.1-setup.run
+RUN tmp/zephyr-sdk-0.11.1-setup.run -- -d /root/zephyr-sdk-0.11.1
 ENV ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.10.3
-RUN rm tmp/zephyr-sdk-0.10.3-setup.run
+ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.11.1
+RUN rm tmp/zephyr-sdk-0.11.1-setup.run
 
 # Bootstrap west
 RUN pip3 install --user west
@@ -50,14 +50,19 @@ RUN cd /root/zephyrproject && pip3 install --user -r zephyr/scripts/requirements
 
 
 # DEBUGGER
-RUN pip3 install --user pyocd
+RUN apt-get update -y
+RUN apt-get upgrade -y
+RUN pip3 install --user pyocd==0.21.0
 RUN apt-get install udev -y
 RUN echo 'ATTRS{product}=="*CMSIS-DAP*", MODE="660", GROUP="plugdev", TAG+="uaccess"' > /etc/udev/rules.d/50-mbed.rules
 
-ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.10.3
+ENV ZEPHYR_SDK_INSTALL_DIR=/root/zephyr-sdk-0.11.1
 #create a directory for our project & setup a shared workfolder between the host and docker container
 RUN mkdir -p /usr/src/app
 VOLUME ["/usr/src/app"]
+
+#add bashrc commands
+RUN echo "cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && cd /usr/src/app" >> /root/.bashrc
 
 EXPOSE 4444
 EXPOSE 3333

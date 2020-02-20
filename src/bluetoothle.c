@@ -58,7 +58,7 @@ static void sdgmc_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
 BT_GATT_SERVICE_DEFINE(drone_svc,
         BT_GATT_PRIMARY_SERVICE(BT_UUID_UART),
         BT_GATT_CHARACTERISTIC(BT_UUID_UART_TX, BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE, NULL, NULL, NULL),
-        BT_GATT_CCC(sdgmc_ccc_cfg_changed),
+        BT_GATT_CCC(sdgmc_ccc_cfg_changed,BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
         BT_GATT_CHARACTERISTIC(BT_UUID_UART_RX, BT_GATT_CHRC_WRITE , BT_GATT_PERM_WRITE, NULL, write_signed, &PC_rx),
 );
 

@@ -27,16 +27,3 @@
 		label = "VL53L0X";
 	};
 };
-
-&i2c1 { /* feather I2C */
-	status = "okay";
-	clock-frequency = <I2C_BITRATE_FAST>;
-	sda-pin = <33>;
-	scl-pin = <34>;
-
-    vl53l0x@29 {
-		compatible = "st,vl53l0x";
-		reg = <0x29>;
-		label = "VL53L0X2";
-	};
-};

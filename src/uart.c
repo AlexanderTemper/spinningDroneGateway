@@ -1,6 +1,6 @@
 #include <errno.h>
 #include <init.h>
-#include <uart.h>
+#include <drivers/uart.h>
 #include <sys/ring_buffer.h>
 #include <zephyr.h>
 

@@ -10,13 +10,16 @@
 #include <zephyr.h>
 #include <zephyr/types.h>
 #include <sys/ring_buffer.h>
+#include <math.h>
 
 #include "bluetoothle.h"
+#include "filter.h"
 #include "globals.h"
 #include "uart.h"
 #include "msp.h"
 #include "controller.h"
 
+#define BIQUAD_Q 1.0f / sqrtf(2.0f)     /* quality factor - 2nd order butterworth*/
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
 #define LED	DT_ALIAS_LED0_GPIOS_PIN
 
@@ -123,19 +126,19 @@ void main(void)
 
     dev = device_get_binding(LED_PORT);
     /* Set LED pin as output */
-    gpio_pin_configure(dev, LED, GPIO_DIR_OUT);
+    gpio_pin_configure(dev, LED, GPIO_OUTPUT);
 
     printk("Hello World!\n");
 
-    init_sensor(&frontFace);
-    frontFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
+//    init_sensor(&frontFace);
+//    frontFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
     init_sensor(&downFace);
     downFace.dev = device_get_binding(DT_INST_0_ST_VL53L0X_LABEL);
-    if (frontFace.dev == NULL) {
-        printk("Could not get VL53L0X frontFace\n");
-        return;
-    }
-
+//    if (frontFace.dev == NULL) {
+//        printk("Could not get VL53L0X frontFace\n");
+//        return;
+//    }
+//
     if (downFace.dev == NULL) {
         printk("Could not get VL53L0X downFace\n");
         return;
@@ -146,8 +149,8 @@ void main(void)
     init_ringbuffer(&FC_rx);
     init_ringbuffer(&FC_tx);
 
-    gpio_pin_write(dev, LED, 1);
-    u32_t cycles_spent = 0;
+    gpio_pin_set(dev, LED, 1);
+//    u32_t cycles_spent = 0;
     u32_t cycles_spent1 = 0;
 #define MSP_ATTITUDE_FETCH_TIME 10
     s64_t attitudeFetchTime = 0;
@@ -158,28 +161,32 @@ void main(void)
     s64_t currentTime = 0;
 
 
+    //biquadFilter_t tof_filter;
+    //biquadFilterInit(&tof_filter, 10, 500, BIQUAD_Q, FILTER_LPF); //TODO 500 auf refrashrate
+
+
 
     while (1) {
 
         bluetoothUartNotify();
         currentTime = k_uptime_get_32();
 
-        int ret = fetch_distance(&frontFace,1);
-
-        if (ret == 0) {
-            tof_front.time = (SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
-            tof_front.range = frontFace.distance;
-            cycles_spent = k_cycle_get_32();
-        } else if(ret == 1) { //work with bufferd data
-            tof_front.time = 0;
-            tof_front.range = frontFace.distance;
-        } else { //did not get valid data
-            tof_front.range = -1;
-        }
-
+//        int ret = fetch_distance(&frontFace,1);
+//
+//        if (ret == 0) {
+//            tof_front.time = (SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+//            tof_front.range = biquadFilterApply(&tof_filter, frontFace.distance);
+//            cycles_spent = k_cycle_get_32();
+//        } else if(ret == 1) { //work with bufferd data
+//            tof_front.time = 0;
+//            tof_front.range = frontFace.distance;
+//        } else { //did not get valid data
+//            tof_front.range = -1;
+//        }
+//
         if (fetch_distance(&downFace,15) == 0) {
             getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
-            //printf("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
+            printk("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
             cycles_spent1 = k_cycle_get_32();
         }
 

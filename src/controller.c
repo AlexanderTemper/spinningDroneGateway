@@ -39,7 +39,7 @@ void resetController()
     integral = 0;
     thrust_alt = 0;
     modus = IDLE;
-    for( int i=0;i<RC_CHANAL_COUNT;i++){
+    for (int i = 0; i < RC_CHANAL_COUNT; i++) {
         chan[i] = 0;
     }
     printk("Controller reseted\n");
@@ -60,78 +60,71 @@ int pushController(tof_controller_t *tof)
     float dterm = 0;
     int offsetSensor = 0; //offset sensor is away from collison
 
-
-    if(tof->range < 0){ // No Sensor Value
+    if (tof->range < 0) { // No Sensor Value
         return 0;
     }
 
-    if(tof->time == 0){ // return old force if sensor data ist not available
-       //printk("no new data available get old data %i , %i\n", tof->range, tof->last_froce);
-       return tof->last_froce;
+    if (tof->time == 0) { // return old force if sensor data ist not available
+        //printk("no new data available get old data %i , %i\n", tof->range, tof->last_froce);
+        return tof->last_froce;
     }
 
     int error = 1000 - (tof->range - offsetSensor);
-    if(error < 0){ // we are not in danger zone
+    if (error < 0) { // we are not in danger zone
         return 0;
     }
 
-
-
-    int ki=0, kp =0, kd = 0;
+    int ki = 0, kp = 0, kd = 0;
     kp = constrain(pterm * error, -500, +500);
 
-    float derivative = ((error - tof->l_error)/cycleTime) * 4000;
+    float derivative = ((error - tof->l_error) / cycleTime) * 4000;
     float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
     tof->derivative2 = tof->derivative1;
     tof->derivative1 = derivative;
-    float derivativeFiltered = derivativeSum/3;
+    float derivativeFiltered = derivativeSum / 3;
     kd = constrain(dterm * derivativeFiltered, -50, +50);
 
     tof->l_error = error;
     int force = kp + ki + kd;
 
-    printk("error %i , p %i d, %i = %i\n", error,kp,kd,force);
+    printk("error %i , p %i d, %i = %i\n", error, kp, kd, force);
     tof->time = 0; // Reset time and save the force (so this can called faster then new data arrives
-    if(force < 0){
+    if (force < 0) {
         return 0;
     }
     tof->last_froce = force;
     return tof->last_froce;
 }
 
-void calcPushback (int16_t *roll, int16_t *pitch,tof_controller_t *tof)
+void calcPushback(int16_t *roll, int16_t *pitch, tof_controller_t *tof)
 {
     //ROS_INFO("bevore %i [%i,%i,%i] ",heading - headFreeModeHold, rcCommand[THROTTLE],*roll,*pitch);
     float radDiff = (att_data.yaw - headFreeModeHold) * M_PI / 180.0f;
     float cosDiff = cosf(radDiff);
     float sinDiff = sinf(radDiff);
 
+    // TODO Calc it in Drone Frame not in Earth Frame
     int force = 0;
     force = pushController(tof);
 
-    switch(tof->direction){
-        case FRONT:
-            *roll = -force * sinDiff;
-            *pitch = -force * cosDiff;
-            break;
-        case REAR:
-            *roll = force * sinDiff;
-            *pitch = force * cosDiff;
-            break;
-        case RIGHT:
-            *pitch = force * sinDiff;
-            *roll = -force * cosDiff;
-            break;
-        case LEFT:
-            *pitch = -force * sinDiff;
-            *roll = force * cosDiff;
-            break;
-        default:
-            break;
+    switch (tof->direction) {
+    case FRONT:
+        *pitch = -force;
+        break;
+    case REAR:
+        *pitch = force;
+        break;
+    case RIGHT:
+        *roll = -force;
+        break;
+    case LEFT:
+        *roll = force;
+        break;
     }
 }
 
-void calcHeadFree(int16_t *roll, int16_t *pitch){
+void calcHeadFree(int16_t *roll, int16_t *pitch)
+{
     float radDiff = (att_data.yaw - headFreeModeHold) * M_PI / 180.0f;
     float cosDiff = cosf(radDiff);
     float sinDiff = sinf(radDiff);
@@ -170,26 +163,22 @@ void tick()
         } else {
             // Normalize RC Data
             int16_t roll = (int16_t) chan[RC_ROLL] - 1500; //norm data to -500..500
-            int16_t pitch = (int16_t) chan[RC_PITCH] -1500;
+            int16_t pitch = (int16_t) chan[RC_PITCH] - 1500;
+
+            calcHeadFree(&roll, &pitch);
 
             // update data with push forces from tof sensors
-            int16_t pushRoll,pushPitch;
-            calcPushback(&pushRoll,&pushPitch,&tof_front);
-            roll = constrain(roll + pushRoll,-500,500);
-            pitch = constrain(pitch + pushPitch,-500,500);
-
-            //printk("Before %i %i \n", roll,pitch);
-            // rotate head free
-            calcHeadFree(&roll,&pitch);
-            //printk("after  %i %i \n", roll,pitch);
+            int16_t pushRoll, pushPitch;
+            calcPushback(&pushRoll, &pushPitch, &tof_front);
+            roll = constrain(roll + pushRoll, -500, 500);
+            pitch = constrain(pitch + pushPitch, -500, 500);
 
             // update throttle bases on altitude  hold
             rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE] + thrust_alt, 1100, 1800);
 
-
             // shift rc data back to transmit
-            rcControl.rcdata.roll = constrain(roll+1500, 1000, 2000);
-            rcControl.rcdata.pitch = constrain(pitch+1500, 1000, 2000);
+            rcControl.rcdata.roll = constrain(roll + 1500, 1000, 2000);
+            rcControl.rcdata.pitch = constrain(pitch + 1500, 1000, 2000);
             rcControl.rcdata.yaw = chan[RC_YAW];
 
             rcControl.rcdata.arm = chan[RC_ARM];
@@ -206,7 +195,7 @@ void tick()
             //printk("landing done\n");
         } else {
             // Todo Timeout
-            static s64_t landingTimer =0;
+            static s64_t landingTimer = 0;
             s64_t currentTime = k_uptime_get_32();
             if (currentTime >= landingTimer) {
                 landingTimer = currentTime + 50;

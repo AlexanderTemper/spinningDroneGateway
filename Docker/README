@@ -4,13 +4,11 @@ docker build --tag=zephyr .
 # Run Docker
 docker run -it -p 3333:3333 -p 4444:4444 -v "/home/alexander/Schreibtisch/spinningGateway":/usr/src/app --privileged -v /dev/bus/usb:/dev/bus/usb zephyr
 
-# Commands to build (done on docker)
-cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && west update && git pull && cd /usr/src/app && west build -b particle_xenon 
-cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && cd /usr/src/app && west build -b particle_xenon
+# Build
+west build -b particle_xenon
 
+## Driver Hotfix
 cp VLLIB/vl53l0x/vl53l0x.c /root/zephyrproject/zephyr/drivers/sensor/vl53l0x/vl53l0x.c
-cp board.c /root/zephyrproject/zephyr/boards/arm/particle_xenon/board.c
 
-
-cd /root/zephyrproject/zephyr/ && source zephyr-env.sh && cd /usr/src/app && cp VLLIB/vl53l0x/vl53l0x.c /root/zephyrproject/zephyr/drivers/sensor/vl53l0x/vl53l0x.c
-cp board.c /root/zephyrproject/zephyr/boards/arm/particle_xenon/board.c && west build -b particle_xenon
+# Update
+west update && git pull && cd /usr/src/app && west build -b particle_xenon 
