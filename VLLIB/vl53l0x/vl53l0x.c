@@ -21,7 +21,7 @@
 #include "vl53l0x_api.h"
 #include "vl53l0x_platform.h"
 
-LOG_MODULE_REGISTER(VL53L0X, CONFIG_SENSOR_LOG_LEVEL);
+LOG_MODULE_REGISTER( VL53L0X, CONFIG_SENSOR_LOG_LEVEL);
 
 /* All the values used in this driver are coming from ST datasheet and examples.
  * It can be found here:
@@ -36,6 +36,20 @@ LOG_MODULE_REGISTER(VL53L0X, CONFIG_SENSOR_LOG_LEVEL);
 #define VL53L0X_SETUP_MAX_TIME_FOR_RANGING     33000
 #define VL53L0X_SETUP_PRE_RANGE_VCSEL_PERIOD   18
 #define VL53L0X_SETUP_FINAL_RANGE_VCSEL_PERIOD 14
+#define VL53L0X_CHIP_ADRESS_DEFAULT 0x29
+
+struct vl53l0x_driver_config {
+    char *xshut_gipos_controller;
+    gpio_pin_t xshut_pin;
+    char *bus_name;
+    u8_t base_address;
+};
+
+struct vl53l0x_multi_driver_config {
+    const struct vl53l0x_driver_config * configs;
+    u8_t count;
+    const struct vl53l0x_driver_config * self;
+};
 
 struct vl53l0x_data {
     struct device *i2c;
@@ -48,9 +62,7 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
     struct vl53l0x_data *drv_data = dev->driver_data;
     VL53L0X_Error ret;
 
-    __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL
-            || chan == SENSOR_CHAN_DISTANCE
-            || chan == SENSOR_CHAN_PROX);
+    __ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_DISTANCE || chan == SENSOR_CHAN_PROX);
 
     uint8_t NewDatReady = 0;
     ret = VL53L0X_GetMeasurementDataReady(&drv_data->vl53l0x, &NewDatReady);
@@ -78,23 +90,17 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
 
     VL53L0X_PollingDelay(&drv_data->vl53l0x);
 
-
     return 0;
 }
 
-
-static int vl53l0x_channel_get(struct device *dev,
-                   enum sensor_channel chan,
-                   struct sensor_value *val)
+static int vl53l0x_channel_get(struct device *dev, enum sensor_channel chan, struct sensor_value *val)
 {
-    struct vl53l0x_data *drv_data = (struct vl53l0x_data *)dev->driver_data;
+    struct vl53l0x_data *drv_data = (struct vl53l0x_data *) dev->driver_data;
 
-    __ASSERT_NO_MSG(chan == SENSOR_CHAN_DISTANCE
-            || chan == SENSOR_CHAN_PROX);
+    __ASSERT_NO_MSG(chan == SENSOR_CHAN_DISTANCE || chan == SENSOR_CHAN_PROX);
 
     if (chan == SENSOR_CHAN_PROX) {
-        if (drv_data->RangingMeasurementData.RangeMilliMeter <=
-            CONFIG_VL53L0X_PROXIMITY_THRESHOLD) {
+        if (drv_data->RangingMeasurementData.RangeMilliMeter <= CONFIG_VL53L0X_PROXIMITY_THRESHOLD) {
             val->val1 = 1;
         } else {
             val->val1 = 0;
@@ -112,9 +118,8 @@ static int vl53l0x_channel_get(struct device *dev,
 }
 
 static const struct sensor_driver_api vl53l0x_api_funcs = {
-    .sample_fetch = vl53l0x_sample_fetch,
-    .channel_get = vl53l0x_channel_get,
-};
+        .sample_fetch = vl53l0x_sample_fetch,
+        .channel_get = vl53l0x_channel_get, };
 
 static int vl53l0x_setup_continous(struct device *dev)
 {
@@ -131,81 +136,67 @@ static int vl53l0x_setup_continous(struct device *dev)
         goto exit;
     }
 
-    ret = VL53L0X_PerformRefCalibration(&drv_data->vl53l0x,
-                        &VhvSettings,
-                        &PhaseCal);
+    ret = VL53L0X_PerformRefCalibration(&drv_data->vl53l0x, &VhvSettings, &PhaseCal);
     if (ret) {
         LOG_ERR("VL53L0X_PerformRefCalibration failed");
         goto exit;
     }
 
-    ret = VL53L0X_PerformRefSpadManagement(&drv_data->vl53l0x,
-                           (uint32_t *)&refSpadCount,
-                           &isApertureSpads);
+    ret = VL53L0X_PerformRefSpadManagement(&drv_data->vl53l0x, (uint32_t *) &refSpadCount, &isApertureSpads);
     if (ret) {
         LOG_ERR("VL53L0X_PerformRefSpadManagement failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetDeviceMode(&drv_data->vl53l0x,
-                    VL53L0X_DEVICEMODE_CONTINUOUS_RANGING);
+    ret = VL53L0X_SetDeviceMode(&drv_data->vl53l0x, VL53L0X_DEVICEMODE_CONTINUOUS_RANGING);
     if (ret) {
         LOG_ERR("VL53L0X_SetDeviceMode failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x,
-                      VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
-                      1);
+    ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x, VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE, 1);
     if (ret) {
         LOG_ERR("VL53L0X_SetLimitCheckEnable sigma failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x,
-                VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
-                1);
+    ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x, VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE, 1);
     if (ret) {
         LOG_ERR("VL53L0X_SetLimitCheckEnable signal rate failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x,
-                VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
-                VL53L0X_SETUP_SIGNAL_LIMIT);
+    ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x, VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
+    VL53L0X_SETUP_SIGNAL_LIMIT);
 
     if (ret) {
         LOG_ERR("VL53L0X_SetLimitCheckValue signal rate failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x,
-                     VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
-                     VL53L0X_SETUP_SIGMA_LIMIT);
+    ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x, VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
+    VL53L0X_SETUP_SIGMA_LIMIT);
     if (ret) {
         LOG_ERR("VL53L0X_SetLimitCheckValue sigma failed");
         goto exit;
     }
 
     ret = VL53L0X_SetMeasurementTimingBudgetMicroSeconds(&drv_data->vl53l0x,
-                        VL53L0X_SETUP_MAX_TIME_FOR_RANGING);
+    VL53L0X_SETUP_MAX_TIME_FOR_RANGING);
     if (ret) {
-        LOG_ERR(
-        "VL53L0X_SetMeasurementTimingBudgetMicroSeconds failed");
+        LOG_ERR("VL53L0X_SetMeasurementTimingBudgetMicroSeconds failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x,
-                      VL53L0X_VCSEL_PERIOD_PRE_RANGE,
-                      VL53L0X_SETUP_PRE_RANGE_VCSEL_PERIOD);
+    ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x, VL53L0X_VCSEL_PERIOD_PRE_RANGE,
+    VL53L0X_SETUP_PRE_RANGE_VCSEL_PERIOD);
     if (ret) {
         LOG_ERR("VL53L0X_SetVcselPulsePeriod pre range failed");
         goto exit;
     }
 
-    ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x,
-                    VL53L0X_VCSEL_PERIOD_FINAL_RANGE,
-                    VL53L0X_SETUP_FINAL_RANGE_VCSEL_PERIOD);
+    ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x, VL53L0X_VCSEL_PERIOD_FINAL_RANGE,
+    VL53L0X_SETUP_FINAL_RANGE_VCSEL_PERIOD);
     if (ret) {
         LOG_ERR("VL53L0X_SetVcselPulsePeriod final range failed");
         goto exit;
@@ -217,155 +208,105 @@ static int vl53l0x_setup_continous(struct device *dev)
         goto exit;
     }
 
-exit:
-    return ret;
+    exit: return ret;
 }
 
-static int vl53l0x_setup_single_shot(struct device *dev)
+static VL53L0X_Error setupSensorAddress(struct vl53l0x_data *drv_data, const struct vl53l0x_driver_config *config)
 {
-    struct vl53l0x_data *drv_data = dev->driver_data;
-    int ret;
-    u8_t VhvSettings;
-    u8_t PhaseCal;
-    u32_t refSpadCount;
-    u8_t isApertureSpads;
+    struct device *gpio = device_get_binding(config->xshut_gipos_controller);
+    gpio_pin_set(gpio,config->xshut_pin, 1); // Enable Sensor
+    LOG_DBG("Sensor %x enabled on port: %s pin: %x", config->base_address,config->xshut_gipos_controller,config->xshut_pin);
+    k_sleep(K_MSEC(100));
 
-    ret = VL53L0X_StaticInit(&drv_data->vl53l0x);
+    VL53L0X_Error ret;
+    drv_data->i2c = device_get_binding(config->bus_name);
+    if (drv_data->i2c == NULL) {
+        LOG_ERR("Could not get pointer to %s device.", config->bus_name);
+        return -EINVAL;
+    }
+    drv_data->vl53l0x.i2c = drv_data->i2c;
+    drv_data->vl53l0x.I2cDevAddr = VL53L0X_CHIP_ADRESS_DEFAULT;
+
+    uint8_t DeviceAddress = config->base_address & 0x7F;
+
+    ret = VL53L0X_WrByte(&drv_data->vl53l0x, VL53L0X_REG_I2C_SLAVE_DEVICE_ADDRESS, DeviceAddress);
     if (ret) {
-        LOG_ERR("VL53L0X_StaticInit failed");
-        goto exit;
+        LOG_ERR("Could not write byte %x", DeviceAddress); // process further because address could already be set
     }
 
-    ret = VL53L0X_PerformRefCalibration(&drv_data->vl53l0x,
-                        &VhvSettings,
-                        &PhaseCal);
-    if (ret) {
-        LOG_ERR("VL53L0X_PerformRefCalibration failed");
-        goto exit;
-    }
+    LOG_DBG("Set new device address %x", DeviceAddress);
+    drv_data->vl53l0x.I2cDevAddr = DeviceAddress;
 
-    ret = VL53L0X_PerformRefSpadManagement(&drv_data->vl53l0x,
-                           (uint32_t *)&refSpadCount,
-                           &isApertureSpads);
-    if (ret) {
-        LOG_ERR("VL53L0X_PerformRefSpadManagement failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetDeviceMode(&drv_data->vl53l0x,
-                    VL53L0X_DEVICEMODE_SINGLE_RANGING);
-    if (ret) {
-        LOG_ERR("VL53L0X_SetDeviceMode failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x,
-                      VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
-                      1);
-    if (ret) {
-        LOG_ERR("VL53L0X_SetLimitCheckEnable sigma failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetLimitCheckEnable(&drv_data->vl53l0x,
-                VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
-                1);
-    if (ret) {
-        LOG_ERR("VL53L0X_SetLimitCheckEnable signal rate failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x,
-                VL53L0X_CHECKENABLE_SIGNAL_RATE_FINAL_RANGE,
-                VL53L0X_SETUP_SIGNAL_LIMIT);
-
-    if (ret) {
-        LOG_ERR("VL53L0X_SetLimitCheckValue signal rate failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetLimitCheckValue(&drv_data->vl53l0x,
-                     VL53L0X_CHECKENABLE_SIGMA_FINAL_RANGE,
-                     VL53L0X_SETUP_SIGMA_LIMIT);
-    if (ret) {
-        LOG_ERR("VL53L0X_SetLimitCheckValue sigma failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetMeasurementTimingBudgetMicroSeconds(&drv_data->vl53l0x,
-                        VL53L0X_SETUP_MAX_TIME_FOR_RANGING);
-    if (ret) {
-        LOG_ERR(
-        "VL53L0X_SetMeasurementTimingBudgetMicroSeconds failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x,
-                      VL53L0X_VCSEL_PERIOD_PRE_RANGE,
-                      VL53L0X_SETUP_PRE_RANGE_VCSEL_PERIOD);
-    if (ret) {
-        LOG_ERR("VL53L0X_SetVcselPulsePeriod pre range failed");
-        goto exit;
-    }
-
-    ret = VL53L0X_SetVcselPulsePeriod(&drv_data->vl53l0x,
-                    VL53L0X_VCSEL_PERIOD_FINAL_RANGE,
-                    VL53L0X_SETUP_FINAL_RANGE_VCSEL_PERIOD);
-    if (ret) {
-        LOG_ERR("VL53L0X_SetVcselPulsePeriod final range failed");
-        goto exit;
-    }
-
-exit:
-    return ret;
+    return 0;
 }
 
+
+static VL53L0X_Error init_pin(const struct vl53l0x_driver_config *config)
+{
+    struct device *gpio = device_get_binding(config->xshut_gipos_controller);
+    if (gpio == NULL) {
+        LOG_ERR("Could not get pointer to %s device.", config->xshut_gipos_controller);
+        return -EINVAL;
+    }
+
+    if (gpio_pin_configure(gpio, config->xshut_pin, GPIO_OUTPUT | GPIO_PULL_UP) < 0) {
+        LOG_ERR("Could not configure GPIO %s %d).", config->xshut_gipos_controller, config->xshut_pin);
+        return -EINVAL;
+    }
+
+    gpio_pin_set(gpio,config->xshut_pin, 0);
+    return 0;
+}
+
+static VL53L0X_Error setupSensors(const struct vl53l0x_multi_driver_config *config)
+{
+    static bool finished = false; //only initialize once the pins
+    if (finished) {
+        return 0;
+    }
+    // configure pins
+    for (int i = 0; i < config->count; i++) {
+        if(init_pin(&config->configs[i])){
+            return -EINVAL;
+        }
+    }
+    finished = true;
+    LOG_DBG("reset all pins done");
+    return 0;
+}
 
 static int vl53l0x_init(struct device *dev)
 {
-    struct vl53l0x_data *drv_data = dev->driver_data;
+    const struct vl53l0x_multi_driver_config *config_all = dev->config->config_info;
+    const struct vl53l0x_driver_config *config = config_all->self;
+
     VL53L0X_Error ret;
+
+    ret = setupSensors(config_all);
+    if (ret < 0) {
+        LOG_ERR("Could setup sensors");
+        return -ENODEV;
+    }
+    LOG_DBG("setupSensors done");
+
+    struct vl53l0x_data *drv_data = dev->driver_data;
+
     u16_t vl53l0x_id = 0U;
     VL53L0X_DeviceInfo_t vl53l0x_dev_info;
 
     LOG_DBG("enter in %s", __func__);
+    LOG_DBG("Sensor %x", config->base_address);
 
-#ifdef DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_CONTROLLER
-    struct device *gpio;
 
-    /* configure and set VL53L0X_XSHUT_Pin */
-    gpio = device_get_binding(DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_CONTROLLER);
-    if (gpio == NULL) {
-        LOG_ERR("Could not get pointer to %s device.",
-        DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_CONTROLLER);
-        return -EINVAL;
+    ret = setupSensorAddress(drv_data, config);
+    if (ret < 0) {
+        LOG_ERR("Could setup sensors");
+        return -ENODEV;
     }
 
-    if (gpio_pin_configure(gpio,
-                  DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_PIN,
-                  GPIO_OUTPUT | GPIO_PULL_UP) < 0) {
-        LOG_ERR("Could not configure GPIO %s %d).",
-            DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_CONTROLLER,
-            DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_PIN);
-        return -EINVAL;
-    }
-
-    gpio_pin_set(gpio, DT_INST_0_ST_VL53L0X_XSHUT_GPIOS_PIN, 1);
-    k_sleep(K_MSEC(100));
-#endif
-
-    drv_data->i2c = device_get_binding(DT_INST_0_ST_VL53L0X_BUS_NAME);
-    if (drv_data->i2c == NULL) {
-        LOG_ERR("Could not get pointer to %s device.",
-            DT_INST_0_ST_VL53L0X_BUS_NAME);
-        return -EINVAL;
-    }
-
-    drv_data->vl53l0x.i2c = drv_data->i2c;
-    drv_data->vl53l0x.I2cDevAddr = DT_INST_0_ST_VL53L0X_BASE_ADDRESS;
 
     /* Get info from sensor */
-    (void)memset(&vl53l0x_dev_info, 0, sizeof(VL53L0X_DeviceInfo_t));
+    (void) memset(&vl53l0x_dev_info, 0, sizeof(VL53L0X_DeviceInfo_t));
 
     ret = VL53L0X_GetDeviceInfo(&drv_data->vl53l0x, &vl53l0x_dev_info);
     if (ret < 0) {
@@ -377,14 +318,11 @@ static int vl53l0x_init(struct device *dev)
     LOG_DBG("   Device Name : %s", vl53l0x_dev_info.Name);
     LOG_DBG("   Device Type : %s", vl53l0x_dev_info.Type);
     LOG_DBG("   Device ID : %s", vl53l0x_dev_info.ProductId);
-    LOG_DBG("   ProductRevisionMajor : %d",
-            vl53l0x_dev_info.ProductRevisionMajor);
-    LOG_DBG("   ProductRevisionMinor : %d",
-            vl53l0x_dev_info.ProductRevisionMinor);
+    LOG_DBG("   ProductRevisionMajor : %d", vl53l0x_dev_info.ProductRevisionMajor);
+    LOG_DBG("   ProductRevisionMinor : %d", vl53l0x_dev_info.ProductRevisionMinor);
 
     ret = VL53L0X_RdWord(&drv_data->vl53l0x,
-                 VL53L0X_REG_WHO_AM_I,
-                 (uint16_t *) &vl53l0x_id);
+    VL53L0X_REG_WHO_AM_I, (uint16_t *) &vl53l0x_id);
     if ((ret < 0) || (vl53l0x_id != VL53L0X_CHIP_ID)) {
         LOG_ERR("Issue on device identification");
         return -ENOTSUP;
@@ -406,8 +344,40 @@ static int vl53l0x_init(struct device *dev)
 }
 
 
-static struct vl53l0x_data vl53l0x_driver;
+#define NUMBER_OF_SENSORS 2
 
-DEVICE_AND_API_INIT(vl53l0x, DT_INST_0_ST_VL53L0X_LABEL, vl53l0x_init, &vl53l0x_driver,
-            NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,
+#define CREATE_DATA(DEV_ID) static struct vl53l0x_data vl53l0x_##DEV_ID##_data;
+
+#define CREATE_CONFIG(DEV_ID) \
+    {\
+        .bus_name = DT_INST_##DEV_ID##_ST_VL53L0X_BUS_NAME, \
+        .base_address = DT_INST_##DEV_ID##_ST_VL53L0X_BASE_ADDRESS, \
+        .xshut_gipos_controller = DT_INST_##DEV_ID##_ST_VL53L0X_XSHUT_GPIOS_CONTROLLER, \
+        .xshut_pin = DT_INST_##DEV_ID##_ST_VL53L0X_XSHUT_GPIOS_PIN \
+    }
+
+#define CREATE_DEVICE(DEV_ID) \
+    DEVICE_AND_API_INIT(vl53l0x_##DEV_ID,DT_INST_##DEV_ID##_ST_VL53L0X_LABEL, vl53l0x_init, \
+            &vl53l0x_##DEV_ID##_data,&vl53l0x_config_##DEV_ID, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,\
             &vl53l0x_api_funcs);
+
+#define CREATE_MULTI_config(DEV_ID) \
+static struct vl53l0x_multi_driver_config vl53l0x_config_##DEV_ID = { \
+        .count = NUMBER_OF_SENSORS, \
+        .configs = &configs[0], \
+        .self = &configs[DEV_ID] \
+};
+
+
+CREATE_DATA(0)
+CREATE_DATA(1)
+
+struct vl53l0x_driver_config configs[] = { CREATE_CONFIG(0), CREATE_CONFIG(1) };
+
+CREATE_MULTI_config(0)
+CREATE_MULTI_config(1)
+
+
+CREATE_DEVICE(0)
+CREATE_DEVICE(1)
+

@@ -68,7 +68,7 @@ void init_sensor(distance *dis)
  * -3 senor is recovering distance is last valid read (before recover)
  * recover == amount of readings after error (out range or unknown error
  */
-int fetch_distance(distance *dis,int recover)
+int fetch_distance(distance *dis, int recover)
 {
 
     // last valid value
@@ -130,15 +130,15 @@ void main(void)
 
     printk("Hello World!\n");
 
-//    init_sensor(&frontFace);
-//    frontFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
+    init_sensor(&frontFace);
+    frontFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
     init_sensor(&downFace);
     downFace.dev = device_get_binding(DT_INST_0_ST_VL53L0X_LABEL);
-//    if (frontFace.dev == NULL) {
-//        printk("Could not get VL53L0X frontFace\n");
-//        return;
-//    }
-//
+    if (frontFace.dev == NULL) {
+        printk("Could not get VL53L0X frontFace\n");
+        return;
+    }
+
     if (downFace.dev == NULL) {
         printk("Could not get VL53L0X downFace\n");
         return;
@@ -150,9 +150,9 @@ void main(void)
     init_ringbuffer(&FC_tx);
 
     gpio_pin_set(dev, LED, 1);
-//    u32_t cycles_spent = 0;
+    u32_t cycles_spent = 0;
     u32_t cycles_spent1 = 0;
-#define MSP_ATTITUDE_FETCH_TIME 10
+#define MSP_ATTITUDE_FETCH_TIME 1000
     s64_t attitudeFetchTime = 0;
 
 #define MSP_RC_TO_FC 20
@@ -160,11 +160,8 @@ void main(void)
 
     s64_t currentTime = 0;
 
-
     //biquadFilter_t tof_filter;
     //biquadFilterInit(&tof_filter, 10, 500, BIQUAD_Q, FILTER_LPF); //TODO 500 auf refrashrate
-
-
 
     while (1) {
 
@@ -184,39 +181,42 @@ void main(void)
 //            tof_front.range = -1;
 //        }
 //
-        if (fetch_distance(&downFace,15) == 0) {
+        if (fetch_distance(&downFace, 15) == 0) {
             getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
             printk("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
             cycles_spent1 = k_cycle_get_32();
+        }
+        if (fetch_distance(&frontFace, 1) == 0) {
+            getAltitudeThrottle(getEstimatedAltitude(frontFace.distance), 200);
+            printk("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+            cycles_spent = k_cycle_get_32();
         }
 
         processMSP();
 
         if (currentTime >= attitudeFetchTime) {
+
             attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
             fetchAttitude();
         }
 
-
         // Process Controller
         tick();
-
 
         if (currentTime >= rcSendToFCTime) {
             rcSendToFCTime = currentTime + MSP_RC_TO_FC;
             //printk("delta %d\n",delta);
             // TODO make a timeout for the data so if connection is lost the quadcopter is landing
-            if(watchdogPC < 50){ //1sec Timeout
-                watchdogPC ++;
+            if (watchdogPC < 50) { //1sec Timeout
+                watchdogPC++;
                 //printk("rc to fc %i,%i,%i,%i,%i\n", rcControl.rcdata.roll,rcControl.rcdata.pitch,rcControl.rcdata.yaw,rcControl.rcdata.throttle,rcControl.rcdata.arm);
                 sendRCtoFC();
             } else if (watchdogPC == 50) {
                 resetController();
                 printk("Watchdog was not reseted\n");
-                watchdogPC ++;
+                watchdogPC++;
             }
         }
-
 
     }
 }
