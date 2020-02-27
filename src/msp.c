@@ -388,7 +388,7 @@ static bool mspConsume(mspPort_t *mspPort)
     return false;
 }
 
-void fetchAttitude()
+void requestAttitude()
 {
 //    if(is_request_pending){
 //        //printk("request pending \n");
@@ -411,7 +411,6 @@ void fetchAttitude()
 
     sbufSwitchToReader(&ask.buf, outBufHead); // change streambuf direction
     mspSerialEncode(mspPort, &ask);
-
 }
 
 void sendRCtoFC()

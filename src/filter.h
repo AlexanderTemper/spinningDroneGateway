@@ -2,6 +2,7 @@
 #define FILTER_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef enum {
     FILTER_LPF,    // 2nd order Butterworth section
@@ -15,7 +16,18 @@ typedef struct biquadFilter_s {
     float x1, x2, y1, y2;
 } biquadFilter_t;
 
+
+typedef struct expFilter_s {
+    float a;
+    float last;
+    bool first_messure;
+} expFilter_t;
+
 void biquadFilterInit(biquadFilter_t *filter, float filterFreq, uint32_t refreshRate, float Q, biquadFilterType_e filterType);
 float biquadFilterApply(biquadFilter_t *filter, float input);
+
+void expFilterInit(expFilter_t *filter, float a);
+void expFilterReset(expFilter_t *filter);
+float expFilterApply(expFilter_t *filter,float input);
 
 #endif /*FILTER_H_*/

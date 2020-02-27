@@ -98,6 +98,6 @@ extern mspPort_t FC_msp;
 
 
 void processMSP(void);
-void fetchAttitude(void);
+void requestAttitude(void);
 void sendRCtoFC(void);
 #endif /*MSP_H_*/

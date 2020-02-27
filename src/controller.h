@@ -6,6 +6,10 @@
 #define ARM_SWITCH 4
 #define MODE_SWITCH 5
 
+#define TOF_TIMEOUT_MS 80
+#define TOF_POLLING_TIME_MS 2
+#define TOF_MAX_RANGE 1500
+
 typedef enum {
     FRONT = 0,
     LEFT,
@@ -20,18 +24,26 @@ typedef enum {
  extern flight_mode modus;
 
 typedef struct tof_controller_s{
+    // pid interna
     int l_error;
     int integral_e;
     float derivative1;
     float derivative2;
-    int range;
-    u32_t time;
-    tofDirection direction;
     int last_froce;
+
+    //general
+    int range;
+    s64_t time_last_read;
+    //between reads
+    s64_t time_between_reads;
+    tofDirection direction;
+    struct device *dev;
 } tof_controller_t;
 
 
 extern tof_controller_t tof_front;
+extern tof_controller_t tof_down;
+
 typedef struct altHoldPid_s {
     float P;
     float I;

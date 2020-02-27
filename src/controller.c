@@ -54,46 +54,49 @@ void resetHoldMode()
 
 int pushController(tof_controller_t *tof)
 {
+
+    return 0;
+
     //printk("%i |took %u ms\n",tof->range,tof->time);
-    float cycleTime = tof->time;
-    float pterm = 0.1;
-    float dterm = 0;
-    int offsetSensor = 0; //offset sensor is away from collison
-
-    if (tof->range < 0) { // No Sensor Value
-        return 0;
-    }
-
-    if (tof->time == 0) { // return old force if sensor data ist not available
-        //printk("no new data available get old data %i , %i\n", tof->range, tof->last_froce);
-        return tof->last_froce;
-    }
-
-    int error = 1000 - (tof->range - offsetSensor);
-    if (error < 0) { // we are not in danger zone
-        return 0;
-    }
-
-    int ki = 0, kp = 0, kd = 0;
-    kp = constrain(pterm * error, -500, +500);
-
-    float derivative = ((error - tof->l_error) / cycleTime) * 4000;
-    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
-    tof->derivative2 = tof->derivative1;
-    tof->derivative1 = derivative;
-    float derivativeFiltered = derivativeSum / 3;
-    kd = constrain(dterm * derivativeFiltered, -50, +50);
-
-    tof->l_error = error;
-    int force = kp + ki + kd;
-
-    printk("error %i , p %i d, %i = %i\n", error, kp, kd, force);
-    tof->time = 0; // Reset time and save the force (so this can called faster then new data arrives
-    if (force < 0) {
-        return 0;
-    }
-    tof->last_froce = force;
-    return tof->last_froce;
+//    float cycleTime = tof->time;
+//    float pterm = 0.1;
+//    float dterm = 0;
+//    int offsetSensor = 0; //offset sensor is away from collison
+//
+//    if (tof->range < 0) { // No Sensor Value
+//        return 0;
+//    }
+//
+//    if (tof->time == 0) { // return old force if sensor data ist not available
+//        //printk("no new data available get old data %i , %i\n", tof->range, tof->last_froce);
+//        return tof->last_froce;
+//    }
+//
+//    int error = 1000 - (tof->range - offsetSensor);
+//    if (error < 0) { // we are not in danger zone
+//        return 0;
+//    }
+//
+//    int ki = 0, kp = 0, kd = 0;
+//    kp = constrain(pterm * error, -500, +500);
+//
+//    float derivative = ((error - tof->l_error) / cycleTime) * 4000;
+//    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
+//    tof->derivative2 = tof->derivative1;
+//    tof->derivative1 = derivative;
+//    float derivativeFiltered = derivativeSum / 3;
+//    kd = constrain(dterm * derivativeFiltered, -50, +50);
+//
+//    tof->l_error = error;
+//    int force = kp + ki + kd;
+//
+//    printk("error %i , p %i d, %i = %i\n", error, kp, kd, force);
+//    tof->time = 0; // Reset time and save the force (so this can called faster then new data arrives
+//    if (force < 0) {
+//        return 0;
+//    }
+//    tof->last_froce = force;
+//    return tof->last_froce;
 }
 
 void calcPushback(int16_t *roll, int16_t *pitch, tof_controller_t *tof)

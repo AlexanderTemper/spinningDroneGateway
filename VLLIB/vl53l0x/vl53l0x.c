@@ -68,7 +68,7 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
     ret = VL53L0X_GetMeasurementDataReady(&drv_data->vl53l0x, &NewDatReady);
     if (ret < 0) {
         LOG_ERR("Could not get ready data (error=%d)", ret);
-        return -EINVAL;
+        return -EIO;
     }
 
     if (NewDatReady != 0x01) {
@@ -78,17 +78,17 @@ static int vl53l0x_sample_fetch(struct device *dev, enum sensor_channel chan)
     ret = VL53L0X_GetRangingMeasurementData(&drv_data->vl53l0x, &drv_data->RangingMeasurementData);
     if (ret < 0) {
         LOG_ERR("Could not perform measurment (error=%d)", ret);
-        return -EINVAL;
+        return -EIO;
     }
 
     // Clear the interrupt
     VL53L0X_ClearInterruptMask(&drv_data->vl53l0x, VL53L0X_REG_SYSTEM_INTERRUPT_GPIO_NEW_SAMPLE_READY);
     if (ret < 0) {
         LOG_ERR("Could not clear  (error=%d)", ret);
-        return -EINVAL;
+        return -EIO;
     }
 
-    VL53L0X_PollingDelay(&drv_data->vl53l0x);
+    //VL53L0X_PollingDelay(&drv_data->vl53l0x);
 
     return 0;
 }

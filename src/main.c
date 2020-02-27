@@ -1,6 +1,7 @@
 #include <device.h>
 #include <drivers/gpio.h> 
 #include <drivers/sensor.h>
+#include <logging/log.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stddef.h>
@@ -22,182 +23,148 @@
 #define BIQUAD_Q 1.0f / sqrtf(2.0f)     /* quality factor - 2nd order butterworth*/
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
 #define LED	DT_ALIAS_LED0_GPIOS_PIN
-
 #define SLEEP_TIME 	10
+#define MSP_RC_TO_FC 20
+#define FILTER_TIME 5
+#define MSP_ATTITUDE_FETCH_TIME 10
 
-uint16_t distance_mm = 0;
-uint16_t distance2_mm = 0;
+LOG_MODULE_REGISTER( mainthread, CONFIG_LOG_DEFAULT_LEVEL);
+// global definitions
 s16_t thrust_alt = 0;
 u8_t watchdogPC = 0;
 
-// global definitions
 ringbuffer_t PC_rx;
 ringbuffer_t PC_tx;
 ringbuffer_t FC_rx;
 ringbuffer_t FC_tx;
 
-typedef struct {
-    s64_t last_valid_sample_time;
-    u32_t valid_timeout;
-    u16_t d;
-    u16_t sensor_health;
-    u16_t sensor_recover;
-    struct device *dev;
-    u16_t distance;
-} distance;
-
-distance frontFace;
-distance downFace;
-
 tof_controller_t tof_front;
+tof_controller_t tof_down;
 
-void init_sensor(distance *dis)
+void init_sensor(tof_controller_t *sensor, struct device *dev)
 {
-    dis->d = 0;
-    dis->valid_timeout = 0;
-    dis->last_valid_sample_time = 0;
-    dis->sensor_health = 1;
-    dis->sensor_recover = 0;
-    dis->distance = 0;
+    sensor->range = 0;
+    sensor->dev = dev;
+    sensor->time_last_read = 0;
 }
+
 /**
- * 1 old but still valid data
- * 0 new distance data
- * -1 unkown error
- * -2 timeout of last valid read
- * -3 senor is recovering distance is last valid read (before recover)
- * recover == amount of readings after error (out range or unknown error
+ * get range data from sensor
+ * the sensor can timeout TOF_TIMEOUT_MS
+ * the sensor has an minimal polling interval of TOF_POLLING_TIME_MS
  */
-int fetch_distance(distance *dis, int recover)
+void fetch_distance(tof_controller_t *sensor)
 {
-
-    // last valid value
-    dis->distance = dis->d;
-
     struct sensor_value value;
-    int ret = sensor_sample_fetch(dis->dev);
+    int ret = sensor_sample_fetch(sensor->dev);
 
-    if (ret != -EBUSY && ret != 0) { // unknown error
-        dis->sensor_health = 0;
-        dis->sensor_recover = 0;
-        return -1;
+    if ((k_uptime_get() - sensor->time_last_read) <= TOF_POLLING_TIME_MS) {
+        return;
     }
 
-    if (ret == 0 && sensor_channel_get(dis->dev, SENSOR_CHAN_DISTANCE, &value) == 0) { // no error and new valid value
-        dis->last_valid_sample_time = k_uptime_get_32();
-        dis->valid_timeout = 0;
+    if (ret != -EBUSY && ret != 0) { // unknown error of Sensor
+        sensor->range = -EIO;
+        return;
+    }
 
-        if (dis->sensor_health == 0) {
-            dis->sensor_recover++;
-
-            if (dis->sensor_recover == recover) {
-                dis->sensor_health = 1;
-                dis->sensor_recover = 0;
-            } else { // we still recover
-                return -3;
-            }
+    if (ret == -EBUSY) {
+        if ((k_uptime_get() - sensor->time_last_read) >= TOF_TIMEOUT_MS) { //reset data on Timeout
+            sensor->range = -EIO;
         }
+        return;
+    }
 
-        if (dis->sensor_health == 1) {
-            dis->d = sensor_value_to_double(&value) * 1000; // range in mm
-            dis->distance = dis->d;
-            return 0;
+    if (sensor_channel_get(sensor->dev, SENSOR_CHAN_DISTANCE, &value) == 0) { // no error and new valid value
+        sensor->range = sensor_value_to_double(&value) * 1000; // range in mm;
+        sensor->time_between_reads = k_uptime_get() - sensor->time_last_read;
+        sensor->time_last_read = k_uptime_get();
+        if (sensor->range > TOF_MAX_RANGE) {
+            sensor->range = TOF_MAX_RANGE;
         }
-
+        return;
     }
 
-    dis->valid_timeout = dis->valid_timeout + k_uptime_delta_32(&dis->last_valid_sample_time);
-
-    if (dis->valid_timeout > 100) { // 100ms
-        dis->sensor_health = 0;
-        dis->sensor_recover = 0;
-        return -2;
-    }
-    return 1; // load distance from buffer
+    sensor->range = -EIO;
 }
 
 void init_ringbuffer(ringbuffer_t *ringbuffer)
 {
     ring_buf_init(&ringbuffer->rb, sizeof(ringbuffer->buffer), ringbuffer->buffer);
 }
+
+#define MSP_RC_TO_FC 20
+#define MSP_ATTITUDE_FETCH_TIME 10
 void main(void)
 {
-    struct device *dev;
+    LOG_INF("start main thread");
+    // Set LED pin as output
+    struct device *setup_status_led_dev;
+    setup_status_led_dev = device_get_binding(LED_PORT);
+    gpio_pin_configure(setup_status_led_dev, LED, GPIO_OUTPUT);
+    gpio_pin_set(setup_status_led_dev, LED, 0);
 
-    dev = device_get_binding(LED_PORT);
-    /* Set LED pin as output */
-    gpio_pin_configure(dev, LED, GPIO_OUTPUT);
-
-    printk("Hello World!\n");
-
-    init_sensor(&frontFace);
-    frontFace.dev = device_get_binding(DT_INST_1_ST_VL53L0X_LABEL);
-    init_sensor(&downFace);
-    downFace.dev = device_get_binding(DT_INST_0_ST_VL53L0X_LABEL);
-    if (frontFace.dev == NULL) {
+    init_sensor(&tof_front, device_get_binding(DT_INST_1_ST_VL53L0X_LABEL));
+    init_sensor(&tof_down, device_get_binding(DT_INST_0_ST_VL53L0X_LABEL));
+    if (tof_front.dev == NULL) {
         printk("Could not get VL53L0X frontFace\n");
         return;
     }
-
-    if (downFace.dev == NULL) {
+    if (tof_down.dev == NULL) {
         printk("Could not get VL53L0X downFace\n");
         return;
     }
 
+    // setup ringbuffes for communication with pc and fc
     init_ringbuffer(&PC_rx);
     init_ringbuffer(&PC_tx);
     init_ringbuffer(&FC_rx);
     init_ringbuffer(&FC_tx);
 
-    gpio_pin_set(dev, LED, 1);
-    u32_t cycles_spent = 0;
-    u32_t cycles_spent1 = 0;
-#define MSP_ATTITUDE_FETCH_TIME 1000
     s64_t attitudeFetchTime = 0;
-
-#define MSP_RC_TO_FC 20
+    s64_t sensorFilterTime = 0;
     s64_t rcSendToFCTime = 0;
-
     s64_t currentTime = 0;
+    // all setups done
+    gpio_pin_set(setup_status_led_dev, LED, 1);
 
-    //biquadFilter_t tof_filter;
-    //biquadFilterInit(&tof_filter, 10, 500, BIQUAD_Q, FILTER_LPF); //TODO 500 auf refrashrate
-
+    LOG_INF("start main while loop");
+//    biquadFilter_t tof_filter;
+//    biquadFilterInit(&tof_filter, 10, (1000/FILTER_TIME), BIQUAD_Q, FILTER_LPF);
+    expFilter_t tof_filter;
+    expFilterInit(&tof_filter, 0.15f);
     while (1) {
 
         bluetoothUartNotify();
         currentTime = k_uptime_get_32();
 
-//        int ret = fetch_distance(&frontFace,1);
-//
-//        if (ret == 0) {
-//            tof_front.time = (SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
-//            tof_front.range = biquadFilterApply(&tof_filter, frontFace.distance);
-//            cycles_spent = k_cycle_get_32();
-//        } else if(ret == 1) { //work with bufferd data
-//            tof_front.time = 0;
-//            tof_front.range = frontFace.distance;
-//        } else { //did not get valid data
-//            tof_front.range = -1;
-//        }
-//
-        if (fetch_distance(&downFace, 15) == 0) {
-            getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
-            printk("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
-            cycles_spent1 = k_cycle_get_32();
-        }
-        if (fetch_distance(&frontFace, 1) == 0) {
-            getAltitudeThrottle(getEstimatedAltitude(frontFace.distance), 200);
-            printk("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
-            cycles_spent = k_cycle_get_32();
+        processMSP(); // Process the MSP Buffer and get new information form PC and FC
+
+        fetch_distance(&tof_front);
+        if (currentTime >= sensorFilterTime) {
+            if (tof_front.range < 0) {
+                expFilterReset(&tof_filter);
+            } else {
+                int filterd = expFilterApply(&tof_filter, tof_front.range);
+                printk("SENSOR %i,%i\n", tof_front.range, filterd);
+            }
+
+            sensorFilterTime = currentTime + FILTER_TIME;
         }
 
-        processMSP();
+//        if (fetch_distance(&downFace, 15) == 0) {
+//            getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
+//            printk("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
+//            cycles_spent1 = k_cycle_get_32();
+//        }
+//        if (fetch_distance(&frontFace, 1) == 0) {
+//            getAltitudeThrottle(getEstimatedAltitude(frontFace.distance), 200);
+//            printk("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
+//            cycles_spent = k_cycle_get_32();
+//        }
 
         if (currentTime >= attitudeFetchTime) {
-
             attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
-            fetchAttitude();
+            requestAttitude();
         }
 
         // Process Controller
