@@ -1,6 +1,7 @@
 #ifndef CONTROLLER_H_
 #define CONTROLLER_H_
 #include "streambuf.h"
+#include "filter.h"
 
 #define RC_CHANAL_COUNT 6
 #define ARM_SWITCH 4
@@ -30,14 +31,19 @@ typedef struct tof_controller_s{
     float derivative1;
     float derivative2;
     int last_froce;
+    float pterm;
+    float iterm;
+    float dterm;
 
     //general
+    int error;
     int range;
     s64_t time_last_read;
     //between reads
     s64_t time_between_reads;
     tofDirection direction;
     struct device *dev;
+    filter_t filter;
 } tof_controller_t;
 
 
@@ -85,10 +91,12 @@ typedef struct {
 extern altHoldPid_t altHold;
 extern rc_control_t rcControl;
 extern att_data_t att_data;
+extern tof_controller_t tof_front;
+extern tof_controller_t tof_down;
 
-u16_t getEstimatedAltitude(u16_t distance);
-u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance);
+u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance);
 void setPID(u16_t p, u16_t i, u16_t d);
+void setPushPID(u16_t p, u16_t i, u16_t d);
 void resetController();
 void rc_data_frame_received(sbuf_t *src);
 void tick();

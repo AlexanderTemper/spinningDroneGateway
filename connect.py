@@ -169,7 +169,10 @@ class mspClass:
 			p = self.toInt(self.inBuffer[0], self.inBuffer[1])
 			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
 			d = self.toInt(self.inBuffer[4], self.inBuffer[5])
-			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d) + "\n-------------------------\n"
+			pp = self.toInt(self.inBuffer[6], self.inBuffer[7])
+			pi = self.toInt(self.inBuffer[8], self.inBuffer[9])
+			pd = self.toInt(self.inBuffer[10], self.inBuffer[11])
+			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d) + " PP:" + str(pp) + " PI:" + str(pi) + " PD:" + str(pd) +"\n-------------------------\n"
 		elif self.cmd == self.MSP_ATTITUDE:
 			estRoll = self.twos_comp_16(self.toInt(self.inBuffer[0], self.inBuffer[1]))
 			estPtich = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
@@ -325,11 +328,14 @@ def xor(data):
 	return erg
 
 
-def setPid(p, i, d):
+def setPid(p, i, d,pp,pi,pd):
 	data = [
 		0x00FF & p, p >> 8,
 		0x00FF & i, i >> 8,
 		0x00FF & d, d >> 8,
+		0x00FF & pp, pp >> 8,
+		0x00FF & pi, pi >> 8,
+		0x00FF & pd, pd >> 8,
 	]
 	if not device:
 		return None
@@ -395,9 +401,13 @@ def msp_data(device, data):
         return None
 
 
-P = 150
-I = 40
-D = 3000
+P = 0
+I = 0
+D = 0
+
+P_push = 400
+I_push = 0
+D_push = 1000
 try:
 	
 	adapter.start()
@@ -411,7 +421,7 @@ try:
 	# set PID values
 	# 800,10,500
 	
-	while not setPid(P, I, D):
+	while not setPid(P, I, D,P_push,I_push,D_push):
 		device = connect()
 		if device:
 			device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
@@ -424,7 +434,7 @@ try:
  			timer = millis()
 			while not send_data():
 				device = connect()
-				while not setPid(P, I, D):
+				while not setPid(P, I, D,P_push,I_push,D_push):
 					device = connect()
 					if device:
 						device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)

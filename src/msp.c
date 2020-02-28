@@ -290,11 +290,15 @@ static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
         case MSP_SET_PID:
             ;
             uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
-            if (channelCount == 3) {
+            if (channelCount == 6) {
                 setPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
+                setPushPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
                 sbufWriteU16(dst, (u16_t)(altHold.P * 1000));
                 sbufWriteU16(dst, (u16_t)(altHold.I * 1000));
                 sbufWriteU16(dst, (u16_t)(altHold.D * 1000));
+                sbufWriteU16(dst, (u16_t)(tof_front.pterm * 1000));
+                sbufWriteU16(dst, (u16_t)(tof_front.iterm * 1000));
+                sbufWriteU16(dst, (u16_t)(tof_front.dterm * 1000));
             }
             return true;
         case MSP_SET_RAW_RC:

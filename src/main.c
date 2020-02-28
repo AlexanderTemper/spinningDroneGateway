@@ -25,8 +25,8 @@
 #define LED	DT_ALIAS_LED0_GPIOS_PIN
 #define SLEEP_TIME 	10
 #define MSP_RC_TO_FC 20
-#define FILTER_TIME 5
 #define MSP_ATTITUDE_FETCH_TIME 10
+
 
 LOG_MODULE_REGISTER( mainthread, CONFIG_LOG_DEFAULT_LEVEL);
 // global definitions
@@ -38,8 +38,6 @@ ringbuffer_t PC_tx;
 ringbuffer_t FC_rx;
 ringbuffer_t FC_tx;
 
-tof_controller_t tof_front;
-tof_controller_t tof_down;
 
 void init_sensor(tof_controller_t *sensor, struct device *dev)
 {
@@ -63,12 +61,14 @@ void fetch_distance(tof_controller_t *sensor)
     }
 
     if (ret != -EBUSY && ret != 0) { // unknown error of Sensor
+        filterReset(&sensor->filter);
         sensor->range = -EIO;
         return;
     }
 
     if (ret == -EBUSY) {
         if ((k_uptime_get() - sensor->time_last_read) >= TOF_TIMEOUT_MS) { //reset data on Timeout
+            filterReset(&sensor->filter);
             sensor->range = -EIO;
         }
         return;
@@ -81,9 +81,11 @@ void fetch_distance(tof_controller_t *sensor)
         if (sensor->range > TOF_MAX_RANGE) {
             sensor->range = TOF_MAX_RANGE;
         }
+        sensor->range = filterApply(&sensor->filter, sensor->range);
         return;
     }
 
+    filterReset(&sensor->filter);
     sensor->range = -EIO;
 }
 
@@ -94,6 +96,7 @@ void init_ringbuffer(ringbuffer_t *ringbuffer)
 
 #define MSP_RC_TO_FC 20
 #define MSP_ATTITUDE_FETCH_TIME 10
+#define SENSOR_TIME 33
 void main(void)
 {
     LOG_INF("start main thread");
@@ -121,17 +124,26 @@ void main(void)
     init_ringbuffer(&FC_tx);
 
     s64_t attitudeFetchTime = 0;
-    s64_t sensorFilterTime = 0;
     s64_t rcSendToFCTime = 0;
+    s64_t sensorTime = 0;
     s64_t currentTime = 0;
     // all setups done
     gpio_pin_set(setup_status_led_dev, LED, 1);
 
     LOG_INF("start main while loop");
-//    biquadFilter_t tof_filter;
-//    biquadFilterInit(&tof_filter, 10, (1000/FILTER_TIME), BIQUAD_Q, FILTER_LPF);
-    expFilter_t tof_filter;
-    expFilterInit(&tof_filter, 0.15f);
+
+    biquadFilter_t tof_filter_front;
+    biquadFilterInit(&tof_filter_front, 33, (100000/SENSOR_TIME) , BIQUAD_Q, FILTER_LPF);
+    expFilterInit(&tof_front.filter.expFilter, 0.3f);
+    tof_front.filter.biquadFilter = &tof_filter_front;
+
+    biquadFilter_t tof_filter_ground;
+    biquadFilterInit(&tof_filter_ground, 33, (100000/SENSOR_TIME) , BIQUAD_Q, FILTER_LPF);
+    expFilterInit(&tof_down.filter.expFilter, 0.3f);
+    tof_down.filter.biquadFilter = &tof_filter_ground;
+
+
+    filterInit(&tof_front.filter);
     while (1) {
 
         bluetoothUartNotify();
@@ -139,28 +151,16 @@ void main(void)
 
         processMSP(); // Process the MSP Buffer and get new information form PC and FC
 
-        fetch_distance(&tof_front);
-        if (currentTime >= sensorFilterTime) {
-            if (tof_front.range < 0) {
-                expFilterReset(&tof_filter);
-            } else {
-                int filterd = expFilterApply(&tof_filter, tof_front.range);
-                printk("SENSOR %i,%i\n", tof_front.range, filterd);
-            }
-
-            sensorFilterTime = currentTime + FILTER_TIME;
+        if (currentTime >= sensorTime) {
+            sensorTime = currentTime + SENSOR_TIME;
+            fetch_distance(&tof_front);
+            fetch_distance(&tof_down);
+            //printk("SENSOR %i,%i,%i\n", tof_front.range,tof_down.range,0);
+            getAltitudeThrottle(&tof_down, 200);
         }
 
-//        if (fetch_distance(&downFace, 15) == 0) {
-//            getAltitudeThrottle(getEstimatedAltitude(downFace.distance), 200);
-//            printk("distanceDown %i |took %u\n", downFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent1) / 1000);
-//            cycles_spent1 = k_cycle_get_32();
-//        }
-//        if (fetch_distance(&frontFace, 1) == 0) {
-//            getAltitudeThrottle(getEstimatedAltitude(frontFace.distance), 200);
-//            printk("distanceFront %i |took %u\n", frontFace.distance, SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000);
-//            cycles_spent = k_cycle_get_32();
-//        }
+
+
 
         if (currentTime >= attitudeFetchTime) {
             attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
@@ -177,7 +177,7 @@ void main(void)
             if (watchdogPC < 50) { //1sec Timeout
                 watchdogPC++;
                 //printk("rc to fc %i,%i,%i,%i,%i\n", rcControl.rcdata.roll,rcControl.rcdata.pitch,rcControl.rcdata.yaw,rcControl.rcdata.throttle,rcControl.rcdata.arm);
-                sendRCtoFC();
+                //sendRCtoFC();
             } else if (watchdogPC == 50) {
                 resetController();
                 printk("Watchdog was not reseted\n");

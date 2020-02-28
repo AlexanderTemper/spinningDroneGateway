@@ -23,11 +23,22 @@ typedef struct expFilter_s {
     bool first_messure;
 } expFilter_t;
 
+typedef struct filter_s {
+    biquadFilter_t *biquadFilter;
+    expFilter_t expFilter;
+} filter_t;
+
+
 void biquadFilterInit(biquadFilter_t *filter, float filterFreq, uint32_t refreshRate, float Q, biquadFilterType_e filterType);
 float biquadFilterApply(biquadFilter_t *filter, float input);
 
 void expFilterInit(expFilter_t *filter, float a);
 void expFilterReset(expFilter_t *filter);
 float expFilterApply(expFilter_t *filter,float input);
+
+
+void filterInit(filter_t *filter);
+void filterReset(filter_t *filter);
+float filterApply(filter_t *filter,float input);
 
 #endif /*FILTER_H_*/

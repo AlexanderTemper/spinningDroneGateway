@@ -11,9 +11,9 @@
 altHoldPid_t altHold;
 rc_control_t rcControl;
 att_data_t att_data;
-u32_t previousC;
-s16_t last_error;
-s16_t integral;
+
+tof_controller_t tof_front;
+tof_controller_t tof_down;
 
 flight_mode modus = IDLE;
 int16_t headFreeModeHold = 0;
@@ -23,20 +23,20 @@ u32_t microsDiff(u32_t previousC, u32_t currentC)
     return SYS_CLOCK_HW_CYCLES_TO_NS(currentC - previousC) / 1000;
 }
 
-#define UPDATE_INTERVAL 25000   // 40hz update rate (20hz LPF on acc)
-#define AccDeadband 5 // in mm
-u16_t getEstimatedAltitude(u16_t distance)
+void reset_tof(tof_controller_t *tof)
 {
-    static float last_distance;
-    last_distance = last_distance + 0.3f * ((float) distance - last_distance);
-    //printk("%i,%i,", distance,(int)last_distance);
-    return (u16_t) last_distance;
+    tof->integral_e = 0;
+    tof->l_error = 0;
+    tof->integral_e = 0;
+    tof->derivative1 = 0;
+    tof->derivative2 = 0;
+    tof->last_froce = 0;
 }
 // last data from pc
 u16_t chan[RC_CHANAL_COUNT];
 void resetController()
 {
-    integral = 0;
+    reset_tof(&tof_down);
     thrust_alt = 0;
     modus = IDLE;
     for (int i = 0; i < RC_CHANAL_COUNT; i++) {
@@ -47,66 +47,53 @@ void resetController()
 
 void resetHoldMode()
 {
-    integral = 0;
+    reset_tof(&tof_down);
     thrust_alt = 0;
     printk("Reset Hold Mode\n");
 }
 
 int pushController(tof_controller_t *tof)
 {
+    float refreshTime = tof->time_between_reads;
+    float pterm = tof->pterm;
+    float iterm = tof->iterm;
+    float dterm = tof->dterm;
+    int offsetSensor = 0; //offset sensor is away from collison
 
-    return 0;
+    if (tof->range < 0) { // No Sensor Value
+        return 0;
+    }
 
-    //printk("%i |took %u ms\n",tof->range,tof->time);
-//    float cycleTime = tof->time;
-//    float pterm = 0.1;
-//    float dterm = 0;
-//    int offsetSensor = 0; //offset sensor is away from collison
-//
-//    if (tof->range < 0) { // No Sensor Value
-//        return 0;
-//    }
-//
-//    if (tof->time == 0) { // return old force if sensor data ist not available
-//        //printk("no new data available get old data %i , %i\n", tof->range, tof->last_froce);
-//        return tof->last_froce;
-//    }
-//
-//    int error = 1000 - (tof->range - offsetSensor);
-//    if (error < 0) { // we are not in danger zone
-//        return 0;
-//    }
-//
-//    int ki = 0, kp = 0, kd = 0;
-//    kp = constrain(pterm * error, -500, +500);
-//
-//    float derivative = ((error - tof->l_error) / cycleTime) * 4000;
-//    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
-//    tof->derivative2 = tof->derivative1;
-//    tof->derivative1 = derivative;
-//    float derivativeFiltered = derivativeSum / 3;
-//    kd = constrain(dterm * derivativeFiltered, -50, +50);
-//
-//    tof->l_error = error;
-//    int force = kp + ki + kd;
-//
-//    printk("error %i , p %i d, %i = %i\n", error, kp, kd, force);
-//    tof->time = 0; // Reset time and save the force (so this can called faster then new data arrives
-//    if (force < 0) {
-//        return 0;
-//    }
-//    tof->last_froce = force;
-//    return tof->last_froce;
+    int error = 1000 - (tof->range - offsetSensor);
+    if (error < 0) { // we are not in danger zone
+        return 0;
+    }
+
+    int ki = 0, kp = 0, kd = 0;
+    kp = constrain(pterm * error, -500, +500);
+
+    float derivative = ((error - tof->l_error) / refreshTime) * 33;
+    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
+    tof->derivative2 = tof->derivative1;
+    tof->derivative1 = derivative;
+    float derivativeFiltered = derivativeSum / 3;
+    kd = constrain(dterm * derivativeFiltered, -250, +250);
+
+    tof->l_error = error;
+    int force = kp + ki + kd;
+
+
+    //printk("[%i,%i] | [p=%i,d=%i,i=%i] |force=%i\n", tof->range, error, kp, kd, ki, force);
+    //printk("SENSOR %i,%i,%i\n", kp, kd,tof->range);
+    if (force < 0) {
+        return 0;
+    }
+    tof->last_froce = force;
+    return tof->last_froce;
 }
 
 void calcPushback(int16_t *roll, int16_t *pitch, tof_controller_t *tof)
 {
-    //ROS_INFO("bevore %i [%i,%i,%i] ",heading - headFreeModeHold, rcCommand[THROTTLE],*roll,*pitch);
-    float radDiff = (att_data.yaw - headFreeModeHold) * M_PI / 180.0f;
-    float cosDiff = cosf(radDiff);
-    float sinDiff = sinf(radDiff);
-
-    // TODO Calc it in Drone Frame not in Earth Frame
     int force = 0;
     force = pushController(tof);
 
@@ -171,7 +158,7 @@ void tick()
             calcHeadFree(&roll, &pitch);
 
             // update data with push forces from tof sensors
-            int16_t pushRoll, pushPitch;
+            int16_t pushRoll = 0, pushPitch = 0;
             calcPushback(&pushRoll, &pushPitch, &tof_front);
             roll = constrain(roll + pushRoll, -500, 500);
             pitch = constrain(pitch + pushPitch, -500, 500);
@@ -229,42 +216,42 @@ void rc_data_frame_received(sbuf_t *src)
     }
 }
 
-u16_t getAltitudeThrottle(u16_t distance, u16_t target_distance)
+u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance)
 {
 
-    u32_t currentC = k_cycle_get_32();
-    u32_t dTime;
+    float refreshTime = tof->time_between_reads;
+    float pterm = altHold.P;
+    float iterm = altHold.I;
+    float dterm = altHold.D;
+    int offsetSensor = 20; //offset sensor is away from collison
 
-    dTime = microsDiff(previousC, currentC);
-    if (dTime < UPDATE_INTERVAL) {
+    if (tof->range < 0) { // No Sensor Value
         return 0;
     }
-    previousC = currentC;
 
-    // calculate sonar altitude only if the sonar is facing downwards(<25deg) todo
-    //    if (tiltAngle > 250)
-    //        sonarAlt = -1;
-    //    else
-    //        sonarAlt = sonarAlt * (900.0f - tiltAngle) / 900.0f;
+    //printk("%i |took %lld ms\n",tof->range,tof->time_between_reads);
 
-    //float accAltFilter = ((float) (distance - last_distance_filter)) / (dTime * 1e-5f);  // acc in cm/s
+    int error = target_distance - (tof->range - offsetSensor);
 
-    s16_t error = target_distance - distance;
+    int ki = 0, kp = 0, kd = 0;
+    kp = constrain(pterm * error, -400, +400);
 
-    integral = constrain(integral + error, -32000, +32000);
+    tof->integral_e = constrain(tof->integral_e + error, -32000, +32000);
+    ki = constrain(iterm * tof->integral_e, -500, +500);
 
-    s16_t derivative = error - last_error;
+    float derivative = ((error - tof->l_error) / refreshTime) * 33;
+    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
+    tof->derivative2 = tof->derivative1;
+    tof->derivative1 = derivative;
+    float derivativeFiltered = derivativeSum / 3;
+    kd = constrain(dterm * derivativeFiltered, -250, +250);
+    //printk("%i,%i,%i,%i \n", (int)derivative, (int)derivativeSum, (int)derivativeFiltered,kd);
 
-    s16_t kp = constrain(altHold.P * error, -400, +400);
-    s16_t ki = constrain(altHold.I * integral, -500, +500);
-    s16_t kd = constrain(altHold.D * derivative, -250, +250);
-
+    tof->l_error = error;
     thrust_alt = kp + ki + kd;
-    //u16_t p = error * altHold >> 4
 
-    // TODO Deadband
-    //printk("%i,%i,%i  %i %i %i %i\n", kp, ki, kd, thrust_alt, error, derivative, integral);
-    last_error = error;
+
+    //printk("[%i,%i] | [p=%i,d=%i,i=%i] |thr=%i\n", tof->range, error, kp, kd, ki, thrust_alt);
     return 0;
 }
 
@@ -273,6 +260,13 @@ void setPID(u16_t p, u16_t i, u16_t d)
     altHold.P = ((float) p) / 1000;
     altHold.I = ((float) i) / 1000;
     altHold.D = ((float) d) / 1000;
+    printk("\n------------------- \n set pid %d %d %d \n-------------------\n", p, i, d);
+}
+void setPushPID(u16_t p, u16_t i, u16_t d)
+{
+    tof_front.pterm = ((float) p) / 1000;
+    tof_front.iterm = ((float) i) / 1000;
+    tof_front.dterm = ((float) d) / 1000;
     printk("\n------------------- \n set pid %d %d %d \n-------------------\n", p, i, d);
 }
 

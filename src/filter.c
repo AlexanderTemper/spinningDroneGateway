@@ -1,6 +1,7 @@
 #include "filter.h"
 
 #include <math.h>
+#include <sys/printk.h>
 
 #define M_LN2_FLOAT 0.69314718055994530942f
 #define M_PI_FLOAT  3.14159265358979323846f
@@ -85,4 +86,20 @@ float expFilterApply(expFilter_t *filter, float input)
         filter->last = filter->last + filter->a * (input - filter->last);
     }
     return filter->last;
+}
+void filterInit(filter_t *filter){
+
+};
+
+void filterReset(filter_t *filter)
+{
+    expFilterReset(&filter->expFilter);
+}
+
+float filterApply(filter_t *filter, float input)
+{
+    float output = expFilterApply(&filter->expFilter, input);
+    float output2 = biquadFilterApply(filter->biquadFilter, output);
+    //printk("SENSOR %i,%i,%i\n", (int) input, (int)output,(int)output2);
+    return output2;
 }

@@ -94,7 +94,7 @@ void setup() {
     xLabel[k] = k;
   }
 
-  tof = new Sensor(0, 0, width-400, height-50, 0, 1500, "Tof", graphColors, xLabel);
+  tof = new Sensor(0, 0, width-400, height-50, -500, 500, "Tof", graphColors, xLabel);
   surface.setTitle("filter");
 
   serialPort = new Serial(this, serialPortName, 115200);
@@ -124,11 +124,13 @@ void processSerial() {
     if (inBuffer != null) {
       println(inBuffer);
       String[] result = inBuffer.split(",");
-      if (result.length ==2) {
+      if (result.length ==3) {
         int raw = parseInt(result[0].replaceAll("\\D+", "")); //remove non-digits
         int filtered = parseInt(result[1].replaceAll("\\D+", "")); //remove non-digits
+        int filtered2 = parseInt(result[2].replaceAll("\\D+", "")); //remove non-digits
         tofRaw[0] = float(raw);
         tofRaw[1] = float(filtered);
+        tofRaw[2] = float(filtered2);
         tof.updateDiagramm(tofRaw);
       }
     }
