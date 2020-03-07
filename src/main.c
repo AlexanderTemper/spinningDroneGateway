@@ -30,7 +30,6 @@
 
 LOG_MODULE_REGISTER( mainthread, CONFIG_LOG_DEFAULT_LEVEL);
 // global definitions
-u16_t thrust_alt = 0;
 u8_t watchdogPC = 0;
 
 ringbuffer_t PC_rx;

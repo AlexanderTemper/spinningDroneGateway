@@ -18,7 +18,6 @@ extern ringbuffer_t  PC_tx;
 extern ringbuffer_t  FC_rx;
 extern ringbuffer_t  FC_tx;
 
-extern s16_t thrust_alt;
 extern u8_t watchdogPC;
 
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))

@@ -290,13 +290,12 @@ static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
         case MSP_SET_PID:
             ;
             uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
-            if (channelCount == 7) {
-                setAltitudePID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src),sbufReadU16(src));
+            if (channelCount == 6) {
+                setAltitudePID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
                 setPushPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
-                sbufWriteU16(dst, (u16_t)(altHold.climb_p * 1000));
-                sbufWriteU16(dst, (u16_t)(altHold.climb_i * 1000));
-                sbufWriteU16(dst, (u16_t)(altHold.climb_d * 1000));
-                sbufWriteU16(dst, (u16_t)(altHold.alt_p * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.p * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.i * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.d * 1000));
                 sbufWriteU16(dst, (u16_t)(tof_front.pterm * 1000));
                 sbufWriteU16(dst, (u16_t)(tof_front.iterm * 1000));
                 sbufWriteU16(dst, (u16_t)(tof_front.dterm * 1000));
@@ -375,11 +374,14 @@ static bool mspConsume(mspPort_t *mspPort)
 
         return true;
     case MSP_SET_RAW_RC:
-        if ((mspPort->dataSize / sizeof(uint16_t)) != RC_CHANAL_COUNT) {
-            printk("error rc Frame");
-            return false;
+        if (mspPort->portType == MSP_PORT_PC){
+            if ((mspPort->dataSize / sizeof(uint16_t)) != RC_CHANAL_COUNT) {
+                printk("error rc Frame\n");
+                return false;
+            }
+            rc_data_frame_received(src);
         }
-        rc_data_frame_received(src);
+
         return true;
     }
 

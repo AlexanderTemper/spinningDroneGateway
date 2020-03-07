@@ -52,10 +52,9 @@ extern tof_controller_t tof_front;
 extern tof_controller_t tof_down;
 
 typedef struct altHoldPid_s {
-    float climb_p;
-    float climb_i;
-    float climb_d;
-    float alt_p;
+    float p;
+    float i;
+    float d;
 } altHoldPid_t;
 
 enum {
@@ -96,8 +95,8 @@ extern att_data_t att_data;
 extern tof_controller_t tof_front;
 extern tof_controller_t tof_down;
 
-u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance, u16_t current_thr);
-void setAltitudePID(u16_t p, u16_t i, u16_t d, u16_t p_alt);
+s16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance);
+void setAltitudePID(u16_t p, u16_t i, u16_t d);
 void setPushPID(u16_t p, u16_t i, u16_t d);
 void resetController();
 void rc_data_frame_received(sbuf_t *src);

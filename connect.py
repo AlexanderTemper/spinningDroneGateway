@@ -176,11 +176,10 @@ class mspClass:
 			p = self.toInt(self.inBuffer[0], self.inBuffer[1])
 			i = self.toInt(self.inBuffer[2], self.inBuffer[3])
 			d = self.toInt(self.inBuffer[4], self.inBuffer[5])
-			pc = self.toInt(self.inBuffer[6], self.inBuffer[7])
-			pp = self.toInt(self.inBuffer[8], self.inBuffer[9])
-			pi = self.toInt(self.inBuffer[10], self.inBuffer[11])
-			pd = self.toInt(self.inBuffer[12], self.inBuffer[13])
-			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d) +" P_Alt:" + str(pc) + " PP:" + str(pp) + " PI:" + str(pi) + " PD:" + str(pd) +"\n-------------------------\n"
+			pp = self.toInt(self.inBuffer[6], self.inBuffer[7])
+			pi = self.toInt(self.inBuffer[8], self.inBuffer[9])
+			pd = self.toInt(self.inBuffer[10], self.inBuffer[11])
+			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)+ " PP:" + str(pp) + " PI:" + str(pi) + " PD:" + str(pd) +"\n-------------------------\n"
 		elif self.cmd == self.MSP_ATTITUDE:
 			estRoll = self.twos_comp_16(self.toInt(self.inBuffer[0], self.inBuffer[1]))
 			estPtich = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
@@ -190,7 +189,7 @@ class mspClass:
 		 	p = self.twos_comp_16(self.toInt(self.inBuffer[0], self.inBuffer[1]))
 		 	i = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
 		 	d = self.twos_comp_16(self.toInt(self.inBuffer[4], self.inBuffer[5]))
-		 	th = self.toInt(self.inBuffer[6], self.inBuffer[7])
+		 	th = self.twos_comp_16(self.toInt(self.inBuffer[6], self.inBuffer[7]))
 			print "got EST DEBUGDATA" + " p:" + str(p)+" i:" + str(i)+" d:" + str(d)+" thrust:" + str(th)
 			if enableROS:
 				rosdata = Int16MultiArray(data=[p,i,d,th])
@@ -344,12 +343,11 @@ def xor(data):
 	return erg
 
 
-def setPid(p, i, d,pc,pp,pi,pd):
+def setPid(p, i, d,pp,pi,pd):
 	data = [
 		0x00FF & p, p >> 8,
 		0x00FF & i, i >> 8,
 		0x00FF & d, d >> 8,
-		0x00FF & pc, pc >> 8,
 		0x00FF & pp, pp >> 8,
 		0x00FF & pi, pi >> 8,
 		0x00FF & pd, pd >> 8,
@@ -419,9 +417,8 @@ def msp_data(device, data):
 
 
 P_climb = 180
-I_climb = 18
-D_climb = 1500
-P_alt = 333
+I_climb = 15
+D_climb = 3000
 
 P_push = 0
 I_push = 0
@@ -439,7 +436,7 @@ try:
 	# set PID values
 	# 800,10,500
 	
-	while not setPid(P_climb, I_climb, D_climb,P_alt,P_push,I_push,D_push):
+	while not setPid(P_climb, I_climb, D_climb,P_push,I_push,D_push):
 		device = connect()
 		if device:
 			device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
@@ -452,7 +449,7 @@ try:
  			timer = millis()
 			while not send_data():
 				device = connect()
-				while not setPid(P_climb, I_climb, D_climb,P_alt,P_push,I_push,D_push):
+				while not setPid(P_climb, I_climb, D_climb,P_push,I_push,D_push):
 					device = connect()
 					if device:
 						device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)

@@ -20,20 +20,16 @@ tof_controller_t tof_down;
 flight_mode modus = IDLE;
 int16_t headFreeModeHold = 0;
 
-filter_t climb_rate_filter;
-biquadFilter_t filterb;
+static s16_t force_altitude= 0;
 
-
-//u32_t microsDiff(u32_t previousC, u32_t currentC)
-//{
-//    return SYS_CLOCK_HW_CYCLES_TO_NS(currentC - previousC) / 1000;
-//}
-
+int get_alt_error(tof_controller_t *tof, u16_t target_distance){
+    int offsetSensor = 20; //offset sensor is away from collison
+    return target_distance - (tof->range - offsetSensor);
+}
 void reset_tof(tof_controller_t *tof)
 {
     tof->integral_e = 0;
-    tof->l_error = 0;
-    tof->integral_e = 0;
+    tof->l_error = get_alt_error(tof,HOLD_MM);
     tof->derivative1 = 0;
     tof->derivative2 = 0;
     tof->last_froce = 0;
@@ -43,7 +39,7 @@ u16_t chan[RC_CHANAL_COUNT];
 void resetController()
 {
     reset_tof(&tof_down);
-    thrust_alt = 0;
+    force_altitude = 0;
     modus = IDLE;
     for (int i = 0; i < RC_CHANAL_COUNT; i++) {
         chan[i] = 0;
@@ -52,18 +48,11 @@ void resetController()
     printk("Controller reseted\n");
 }
 
-int get_alt_error(tof_controller_t *tof, u16_t target_distance){
-    int offsetSensor = 20; //offset sensor is away from collison
-    return target_distance - (tof->range - offsetSensor);
-}
+
 void resetHoldMode()
 {
+    force_altitude = 0;
     reset_tof(&tof_down);
-    thrust_alt = 0;
-    tof_down.l_error = get_alt_error(&tof_down, HOLD_MM);
-    expFilterInit(&climb_rate_filter.expFilter, 0.3f);
-    biquadFilterInit(&filterb, 33, (100000/33) , BIQUAD_Q, FILTER_LPF);
-    tof_down.filter.biquadFilter = &filterb;
     printk("Reset Hold Mode\n");
 }
 
@@ -179,12 +168,13 @@ void tick()
             roll = constrain(roll + pushRoll, -500, 500);
             pitch = constrain(pitch + pushPitch, -500, 500);
 
+
             if (tof_down.isNew) { //Only update if new data is available
-                getAltitudeThrottle(&tof_down,HOLD_MM,thrust_alt);
+                force_altitude = getAltitudeThrottle(&tof_down,HOLD_MM);
                 tof_down.isNew = false;
             }
             // update throttle bases on altitude  hold
-            rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE] + thrust_alt, 1100, 1800);
+            rcControl.rcdata.throttle = constrain(chan[RC_THROTTLE] + force_altitude, 1100, 1800);
 
 
             // shift rc data back to transmit
@@ -239,13 +229,12 @@ void rc_data_frame_received(sbuf_t *src)
 }
 
 
-u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance,u16_t current_thr)
+s16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance)
 {
     float refreshTime = tof->time_between_reads;
-    float pterm = altHold.climb_p;
-    float iterm = altHold.climb_i;
-    float dterm = altHold.climb_d;
-    float palt =  altHold.alt_p;
+    float pterm = altHold.p;
+    float iterm = altHold.i;
+    float dterm = altHold.d;
 
     if (tof->range < 0) { // No Sensor Value
         return 0;
@@ -266,34 +255,24 @@ u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance,u16_t cur
 //    tof->integral_e = constrain( tof->integral_e, 1000, 2000);
 //    ki = tof->integral_e;
 //
-//    float derivative = ((climb_rate_error - tof->l_error) / refreshTime) * 33;
-//    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
-//    tof->derivative2 = tof->derivative1;
-//    tof->derivative1 = derivative;
-//    float derivativeFiltered = derivativeSum / 3;
-//    kd = constrain(dterm * derivativeFiltered, -250, +250);
-    //printk("%i,%i,%i,%i \n", (int)derivative, (int)derivativeSum, (int)derivativeFiltered,kd);
-
-
 
     s16_t error = get_alt_error(tof,target_distance);
 
-    tof->integral_e = constrain(tof->integral_e + error, -32000, +32000);
-
-    s16_t derivative = error - tof->l_error;
-
     s16_t kp = constrain(pterm * error, -400, +400);
-    s16_t ki = constrain(iterm * tof->integral_e, -500, +500);
-    s16_t kd = constrain(dterm * derivative, -250, +250);
+
+    tof->integral_e = constrain(tof->integral_e + iterm * error, -500, +500);
+    s16_t ki = constrain(tof->integral_e, -500, +500);
+
+
+    float derivative = ((error - tof->l_error) / refreshTime) * 33;
+    float derivativeSum = tof->derivative1 + tof->derivative2 + derivative;
+    tof->derivative2 = tof->derivative1;
+    tof->derivative1 = derivative;
+    float derivativeFiltered = derivativeSum / 3;
+    s16_t kd = constrain(dterm * derivativeFiltered, -250, +250);
 
     tof->l_error = error;
-    int force = kp + ki + kd;
-
-    //update thr
-    //current_thr = constrain(force, 1000, 2000);
-
-
-    //printk("%i,%i,%i\n", kp,ki,kd);
+    s16_t force = kp + ki + kd;
     //printk("[%i,%i] | [p=%i,d=%i,i=%i] |thr=%i\n", tof->range, error, kp, kd, ki, thrust_alt);
     uint8_t data[8];
     data[0] = (uint8_t)((0x00FF) & kp);
@@ -305,26 +284,21 @@ u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance,u16_t cur
     data[4] = (uint8_t)((0x00FF) & kd);
     data[5] = (uint8_t)((0x00FF) & kd >> 8);
 
-
-    int thr = constrain(chan[RC_THROTTLE] + thrust_alt, 1100, 1800);
-    data[6] = (uint8_t)((0x00FF) & thr);
-    data[7] = (uint8_t)((0x00FF) & thr >> 8);
-
+    data[6] = (uint8_t)((0x00FF) & force);
+    data[7] = (uint8_t)((0x00FF) & force >> 8);
 
     send_debug(data, 8);
 
-    thrust_alt = force;
-    return 0;
+    return force;
 }
 
-void setAltitudePID(u16_t p, u16_t i, u16_t d, u16_t p_alt)
+void setAltitudePID(u16_t p, u16_t i, u16_t d)
 {
-    altHold.climb_p = ((float) p) / 1000;
-    altHold.climb_i = ((float) i) / 1000;
-    altHold.climb_d = ((float) d) / 1000;
-    altHold.alt_p = ((float) p_alt) / 1000;
+    altHold.p = ((float) p) / 1000;
+    altHold.i = ((float) i) / 1000;
+    altHold.d = ((float) d) / 1000;
 
-    printk("\n------------------- \n set pid %d %d %d %d \n-------------------\n", p, i, d,p_alt);
+    printk("\n------------------- \n set pid %d %d %d \n-------------------\n", p, i, d);
 }
 void setPushPID(u16_t p, u16_t i, u16_t d)
 {
@@ -337,7 +311,7 @@ void setPushPID(u16_t p, u16_t i, u16_t d)
 static int init_Controller(struct device *dev)
 {
     ARG_UNUSED(dev);
-    setAltitudePID(0, 0, 0, 0);
+    setAltitudePID(0, 0, 0);
     setPushPID(0,0,0);
     return 0;
 }
