@@ -20,14 +20,14 @@ typedef enum {
 
 
 typedef enum {
-    IDLE = 0, ARMED, HOLD, NORMALIZE
+    IDLE = 0, ARMED, HOLD, TAKEOFF, NORMALIZE
 } flight_mode;
  extern flight_mode modus;
 
 typedef struct tof_controller_s{
     // pid interna
     int l_error;
-    int integral_e;
+    float integral_e;
     float derivative1;
     float derivative2;
     int last_froce;
@@ -38,6 +38,7 @@ typedef struct tof_controller_s{
     //general
     int error;
     int range;
+    bool isNew;
     s64_t time_last_read;
     //between reads
     s64_t time_between_reads;
@@ -51,9 +52,10 @@ extern tof_controller_t tof_front;
 extern tof_controller_t tof_down;
 
 typedef struct altHoldPid_s {
-    float P;
-    float I;
-    float D;
+    float climb_p;
+    float climb_i;
+    float climb_d;
+    float alt_p;
 } altHoldPid_t;
 
 enum {
@@ -94,8 +96,8 @@ extern att_data_t att_data;
 extern tof_controller_t tof_front;
 extern tof_controller_t tof_down;
 
-u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance);
-void setPID(u16_t p, u16_t i, u16_t d);
+u16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance, u16_t current_thr);
+void setAltitudePID(u16_t p, u16_t i, u16_t d, u16_t p_alt);
 void setPushPID(u16_t p, u16_t i, u16_t d);
 void resetController();
 void rc_data_frame_received(sbuf_t *src);

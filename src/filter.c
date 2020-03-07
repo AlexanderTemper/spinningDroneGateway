@@ -95,10 +95,14 @@ void filterReset(filter_t *filter)
 {
     expFilterReset(&filter->expFilter);
 }
-
+int count = 0;
 float filterApply(filter_t *filter, float input)
 {
     float output = expFilterApply(&filter->expFilter, input);
+
+    if(!filter->biquadFilter){
+        return output;
+    }
     float output2 = biquadFilterApply(filter->biquadFilter, output);
     //printk("SENSOR %i,%i,%i\n", (int) input, (int)output,(int)output2);
     return output2;

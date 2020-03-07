@@ -125,9 +125,10 @@ void processSerial() {
       println(inBuffer);
       String[] result = inBuffer.split(",");
       if (result.length ==3) {
-        int raw = parseInt(result[0].replaceAll("\\D+", "")); //remove non-digits
-        int filtered = parseInt(result[1].replaceAll("\\D+", "")); //remove non-digits
-        int filtered2 = parseInt(result[2].replaceAll("\\D+", "")); //remove non-digits
+        int raw = parseInt(result[0]); //remove non-digits
+        int filtered = parseInt(result[1]); //remove non-digits
+        int filtered2 = parseInt(result[2].replaceAll("\\P{Print}", "")); //remove non-digits
+        //println(result[2].replaceAll("\\P{Print}", ""));
         tofRaw[0] = float(raw);
         tofRaw[1] = float(filtered);
         tofRaw[2] = float(filtered2);

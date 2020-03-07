@@ -36,7 +36,7 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
         case MSP_ATTITUDE:
             return MSP_GATEWAY_PACKET_REPLY;
         case MSP_SET_RAW_RC:
-            return MSP_GATEWAY_PACKET_REPLY;
+            return MSP_GATEWAY_PACKET_CONSUME;
         case MSP_SET_PID:
             return MSP_GATEWAY_PACKET_REPLY;
         case MSP_NAME:
@@ -290,28 +290,17 @@ static bool reply_data(mspPort_t *mspPort, sbuf_t *dst)
         case MSP_SET_PID:
             ;
             uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
-            if (channelCount == 6) {
-                setPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
+            if (channelCount == 7) {
+                setAltitudePID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src),sbufReadU16(src));
                 setPushPID(sbufReadU16(src), sbufReadU16(src), sbufReadU16(src));
-                sbufWriteU16(dst, (u16_t)(altHold.P * 1000));
-                sbufWriteU16(dst, (u16_t)(altHold.I * 1000));
-                sbufWriteU16(dst, (u16_t)(altHold.D * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.climb_p * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.climb_i * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.climb_d * 1000));
+                sbufWriteU16(dst, (u16_t)(altHold.alt_p * 1000));
                 sbufWriteU16(dst, (u16_t)(tof_front.pterm * 1000));
                 sbufWriteU16(dst, (u16_t)(tof_front.iterm * 1000));
                 sbufWriteU16(dst, (u16_t)(tof_front.dterm * 1000));
             }
-            return true;
-        case MSP_SET_RAW_RC:
-            if ((mspPort->dataSize / sizeof(uint16_t)) != RC_CHANAL_COUNT) {
-                printk("error rc Frame");
-                return false;
-            }
-            rc_data_frame_received(src);
-            //printk("\n");
-            for (int i = 0; i < RC_CHANAL_COUNT; i++) {
-                sbufWriteU16(dst, rcControl.rcdata.raw[i]);
-            }
-            sbufWriteU16(dst, thrust_alt);
             return true;
         case MSP_NAME:
             sbufWriteU8(dst, 'X');
@@ -371,8 +360,6 @@ static bool mspConsume(mspPort_t *mspPort)
     sbuf_t srcBuffer;
     sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
     switch (mspPort->cmdMSP) {
-    case MSP_SET_RAW_RC:
-        return true;
     case MSP_ATTITUDE:
         ;
         uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
@@ -386,6 +373,13 @@ static bool mspConsume(mspPort_t *mspPort)
         //printk("att took %u|%d\n",  SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000,k_uptime_delta_32(&last_att_sample_time));
         //is_request_pending = false;
 
+        return true;
+    case MSP_SET_RAW_RC:
+        if ((mspPort->dataSize / sizeof(uint16_t)) != RC_CHANAL_COUNT) {
+            printk("error rc Frame");
+            return false;
+        }
+        rc_data_frame_received(src);
         return true;
     }
 
@@ -441,6 +435,27 @@ void sendRCtoFC()
     sbufSwitchToReader(&rc.buf, outBufHead); // change streambuf direction
     mspSerialEncode(mspPort, &rc);
 
+}
+
+void send_debug(uint8_t *data, uint8_t len){
+    mspPort_t *mspPort = &PC_msp;
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t rc = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = MSP_DEBUGMSG,
+            .direction = '<', };
+    uint8_t *outBufHead = rc.buf.ptr;
+
+    sbuf_t *dst = &rc.buf;
+
+    for(int i = 0;i<len;i++){
+        sbufWriteU8(dst, data[i]);
+    }
+
+    sbufSwitchToReader(&rc.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort, &rc);
 }
 
 static void mspSerialProcess(mspPort_t *mspPort)

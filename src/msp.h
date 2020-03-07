@@ -100,4 +100,5 @@ extern mspPort_t FC_msp;
 void processMSP(void);
 void requestAttitude(void);
 void sendRCtoFC(void);
+void send_debug(uint8_t *data, uint8_t len);
 #endif /*MSP_H_*/
