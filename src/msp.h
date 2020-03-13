@@ -93,12 +93,14 @@ struct mspPort_s {
 
 extern mspPort_t PC_msp;
 extern mspPort_t FC_msp;
+extern uint8_t *debugData;
 
 #define MSP_FC_VERSION                  3    //out message
 
 
 void processMSP(void);
-void requestAttitude(void);
+int requestAttitude(void);
 void sendRCtoFC(void);
-void send_debug(uint8_t *data, uint8_t len);
+void send_debug();
+void set_debug(uint8_t mode,uint8_t error);
 #endif /*MSP_H_*/

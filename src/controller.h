@@ -1,55 +1,18 @@
 #ifndef CONTROLLER_H_
 #define CONTROLLER_H_
 #include "streambuf.h"
-#include "filter.h"
 
 #define RC_CHANAL_COUNT 6
 #define ARM_SWITCH 4
 #define MODE_SWITCH 5
 
-#define TOF_TIMEOUT_MS 80
-#define TOF_POLLING_TIME_MS 2
-#define TOF_MAX_RANGE 1500
 
-typedef enum {
-    FRONT = 0,
-    LEFT,
-    RIGHT,
-    REAR
-}tofDirection;
 
 
 typedef enum {
     IDLE = 0, ARMED, HOLD, TAKEOFF, NORMALIZE
 } flight_mode;
  extern flight_mode modus;
-
-typedef struct tof_controller_s{
-    // pid interna
-    int l_error;
-    float integral_e;
-    float derivative1;
-    float derivative2;
-    int last_froce;
-    float pterm;
-    float iterm;
-    float dterm;
-
-    //general
-    int error;
-    int range;
-    bool isNew;
-    s64_t time_last_read;
-    //between reads
-    s64_t time_between_reads;
-    tofDirection direction;
-    struct device *dev;
-    filter_t filter;
-} tof_controller_t;
-
-
-extern tof_controller_t tof_front;
-extern tof_controller_t tof_down;
 
 typedef struct altHoldPid_s {
     float p;
@@ -92,14 +55,11 @@ typedef struct {
 extern altHoldPid_t altHold;
 extern rc_control_t rcControl;
 extern att_data_t att_data;
-extern tof_controller_t tof_front;
-extern tof_controller_t tof_down;
 
-s16_t getAltitudeThrottle(tof_controller_t *tof, u16_t target_distance);
 void setAltitudePID(u16_t p, u16_t i, u16_t d);
 void setPushPID(u16_t p, u16_t i, u16_t d);
 void resetController();
 void rc_data_frame_received(sbuf_t *src);
-void tick();
+void tick(int att_timeout);
 
 #endif /*CONTROLLER_H_*/

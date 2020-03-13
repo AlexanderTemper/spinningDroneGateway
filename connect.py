@@ -190,7 +190,7 @@ class mspClass:
 		 	i = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
 		 	d = self.twos_comp_16(self.toInt(self.inBuffer[4], self.inBuffer[5]))
 		 	th = self.twos_comp_16(self.toInt(self.inBuffer[6], self.inBuffer[7]))
-			print "got EST DEBUGDATA" + " p:" + str(p)+" i:" + str(i)+" d:" + str(d)+" thrust:" + str(th)
+			print "got EST DEBUGDATA" + " 1-2:" + str(p)+" 3-4:" + str(i)+" 5-6:" + str(d)+" 7-8:" + str(th) +" Mode:"+str(self.inBuffer[8])+" Error:"+str(self.inBuffer[9])
 			if enableROS:
 				rosdata = Int16MultiArray(data=[p,i,d,th])
 				pub.publish(rosdata)
@@ -420,9 +420,9 @@ P_climb = 180
 I_climb = 15
 D_climb = 3000
 
-P_push = 0
-I_push = 0
-D_push = 0
+P_push = 500
+I_push = 500
+D_push = 8000
 try:
 	
 	adapter.start()

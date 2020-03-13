@@ -1,6 +1,6 @@
 #include <device.h>
 #include <drivers/gpio.h> 
-#include <drivers/sensor.h>
+
 #include <logging/log.h>
 #include <errno.h>
 #include <stdio.h>
@@ -19,6 +19,7 @@
 #include "uart.h"
 #include "msp.h"
 #include "controller.h"
+#include "sensor.h"
 
 
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
@@ -37,58 +38,6 @@ ringbuffer_t PC_tx;
 ringbuffer_t FC_rx;
 ringbuffer_t FC_tx;
 
-
-void init_sensor(tof_controller_t *sensor, struct device *dev)
-{
-    sensor->range = 0;
-    sensor->dev = dev;
-    sensor->time_last_read = 0;
-}
-
-/**
- * get range data from sensor
- * the sensor can timeout TOF_TIMEOUT_MS
- * the sensor has an minimal polling interval of TOF_POLLING_TIME_MS
- */
-void fetch_distance(tof_controller_t *sensor)
-{
-    struct sensor_value value;
-    int ret = sensor_sample_fetch(sensor->dev);
-
-    if ((k_uptime_get() - sensor->time_last_read) <= TOF_POLLING_TIME_MS) {
-        return;
-    }
-
-    if (ret != -EBUSY && ret != 0) { // unknown error of Sensor
-        filterReset(&sensor->filter);
-        sensor->range = -EIO;
-        return;
-    }
-
-    if (ret == -EBUSY) {
-        if ((k_uptime_get() - sensor->time_last_read) >= TOF_TIMEOUT_MS) { //reset data on Timeout
-            filterReset(&sensor->filter);
-            sensor->range = -EIO;
-        }
-        return;
-    }
-
-    if (sensor_channel_get(sensor->dev, SENSOR_CHAN_DISTANCE, &value) == 0) { // no error and new valid value
-        sensor->range = sensor_value_to_double(&value) * 1000; // range in mm;
-        sensor->time_between_reads = k_uptime_get() - sensor->time_last_read;
-        sensor->time_last_read = k_uptime_get();
-        sensor->isNew = true;
-        if (sensor->range > TOF_MAX_RANGE) {
-            sensor->range = TOF_MAX_RANGE;
-        }
-        sensor->range = filterApply(&sensor->filter, sensor->range);
-        return;
-    }
-
-    filterReset(&sensor->filter);
-    sensor->range = -EIO;
-}
-
 void init_ringbuffer(ringbuffer_t *ringbuffer)
 {
     ring_buf_init(&ringbuffer->rb, sizeof(ringbuffer->buffer), ringbuffer->buffer);
@@ -106,8 +55,8 @@ void main(void)
     gpio_pin_configure(setup_status_led_dev, LED, GPIO_OUTPUT);
     gpio_pin_set(setup_status_led_dev, LED, 0);
 
-    init_sensor(&tof_front, device_get_binding(DT_INST_1_ST_VL53L0X_LABEL));
-    init_sensor(&tof_down, device_get_binding(DT_INST_0_ST_VL53L0X_LABEL));
+    init_sensor(&tof_front, device_get_binding(DT_INST_1_ST_VL53L0X_LABEL), 0);
+    init_sensor(&tof_down, device_get_binding(DT_INST_0_ST_VL53L0X_LABEL), 20);
     if (tof_front.dev == NULL) {
         printk("Could not get VL53L0X frontFace\n");
         return;
@@ -117,7 +66,7 @@ void main(void)
         return;
     }
 
-    // setup ringbuffes for communication with pc and fc
+    // setup ringbuffers for communication with pc and fc
     init_ringbuffer(&PC_rx);
     init_ringbuffer(&PC_tx);
     init_ringbuffer(&FC_rx);
@@ -142,10 +91,10 @@ void main(void)
     expFilterInit(&tof_down.filter.expFilter, 0.3f);
 //    tof_down.filter.biquadFilter = &tof_filter_ground;
 
-
-    filterInit(&tof_front.filter);
+    s64_t stopwatch = 0;
+    stopwatch = k_uptime_get();
+    int time_att = 0;
     while (1) {
-
         bluetoothUartNotify();
         currentTime = k_uptime_get();
 
@@ -153,18 +102,24 @@ void main(void)
 
         if (currentTime >= sensorTime) {
             sensorTime = currentTime + SENSOR_TIME;
-            fetch_distance(&tof_front);
-            fetch_distance(&tof_down);
+            fetch_distance_sensor(&tof_front);
+            fetch_distance_sensor(&tof_down);
             //printk("SENSOR %i,%i,%i\n", tof_front.range,tof_down.range,0);
         }
 
         if (currentTime >= attitudeFetchTime) {
+            int stopwatch =  MSP_ATTITUDE_FETCH_TIME + currentTime - attitudeFetchTime;
             attitudeFetchTime = currentTime + MSP_ATTITUDE_FETCH_TIME;
-            requestAttitude();
+            int request_count = requestAttitude();
+            if(request_count > 1){ // FC did not respond to request
+                time_att = time_att + stopwatch;
+            } else {
+                time_att = stopwatch;
+            }
         }
 
         // Process Controller
-        tick();
+        tick(time_att);
 
         if (currentTime >= rcSendToFCTime) {
             rcSendToFCTime = currentTime + MSP_RC_TO_FC;
@@ -174,6 +129,7 @@ void main(void)
                 watchdogPC++;
                 //printk("rc to fc %i,%i,%i,%i,%i,%i\n", rcControl.rcdata.roll,rcControl.rcdata.pitch,rcControl.rcdata.yaw,rcControl.rcdata.throttle,rcControl.rcdata.mode,rcControl.rcdata.arm);
                 sendRCtoFC();
+
             } else if (watchdogPC == 50) {
                 resetController();
                 printk("Watchdog was not reseted\n");

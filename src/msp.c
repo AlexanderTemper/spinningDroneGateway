@@ -6,12 +6,18 @@
 #include "uart.h"
 #include "streambuf.h"
 #include "controller.h"
+#include "sensor.h"
 
 mspPort_t PC_msp;
 mspPort_t FC_msp;
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER( drone_msp, LOG_LEVEL_DBG);
+
+static bool is_att_request_pending;
+
+uint8_t debugArray[20];
+uint8_t *debugData;
 
 int init_msp(struct device *dev)
 {
@@ -25,7 +31,7 @@ int init_msp(struct device *dev)
     FC_msp.txBuffer = &FC_tx;
     FC_msp.passthroughPort = &PC_msp;
     FC_msp.portType = MSP_PORT_FC;
-
+    debugData = &debugArray[0];
     return 0;
 }
 
@@ -259,8 +265,6 @@ int mspSerialEncode(mspPort_t *msp, mspPacket_t *packet)
     return mspSendFrame(msp, hdrBuf, hdrLen, sbufPtr(&packet->buf), dataLen, crcBuf, crcLen);
 }
 
-
-
 static bool modify_data(mspPort_t *mspPort, sbuf_t *dst)
 {
 //    sbuf_t srcBuffer;
@@ -367,19 +371,21 @@ static bool mspConsume(mspPort_t *mspPort)
             att_data.roll = sbufReadU16(src);
             att_data.pitch = sbufReadU16(src);
             att_data.yaw = sbufReadU16(src);
+            is_att_request_pending = false;
             //printk("att %d %d %d\n", att_data.roll, att_data.pitch, att_data.yaw);
         }
-        //printk("att took %u|%d\n",  SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000,k_uptime_delta_32(&last_att_sample_time));
+        //printk("att took %u|%d\n", SYS_CLOCK_HW_CYCLES_TO_NS(k_cycle_get_32() - cycles_spent) / 1000, k_uptime_delta_32(&last_att_sample_time));
         //is_request_pending = false;
 
         return true;
     case MSP_SET_RAW_RC:
-        if (mspPort->portType == MSP_PORT_PC){
+        if (mspPort->portType == MSP_PORT_PC) {
             if ((mspPort->dataSize / sizeof(uint16_t)) != RC_CHANAL_COUNT) {
                 printk("error rc Frame\n");
                 return false;
             }
             rc_data_frame_received(src);
+            send_debug();
         }
 
         return true;
@@ -388,16 +394,26 @@ static bool mspConsume(mspPort_t *mspPort)
     return false;
 }
 
-void requestAttitude()
+int requestAttitude()
 {
-//    if(is_request_pending){
-//        //printk("request pending \n");
-//        return;
-//    }
+    static int request_count = 0;
+    static int request_send_counter = 0;
 
-//    is_request_pending = true;
-//    last_att_sample_time = k_uptime_get_32();
-//    cycles_spent = k_cycle_get_32();
+    request_count++;
+
+    if (is_att_request_pending && request_count <= 10) { //FC did not respond give him more time
+        return request_count;
+    }
+
+    // FC did response so reset
+    if (!is_att_request_pending){
+        request_send_counter = 0;
+        request_count = 0;
+        is_att_request_pending = true;
+    }
+
+    // send an Request
+    request_send_counter++;
 
     mspPort_t *mspPort = &FC_msp;
     static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
@@ -411,6 +427,8 @@ void requestAttitude()
 
     sbufSwitchToReader(&ask.buf, outBufHead); // change streambuf direction
     mspSerialEncode(mspPort, &ask);
+
+    return request_send_counter; //retun number of request with no answer
 }
 
 void sendRCtoFC()
@@ -438,8 +456,24 @@ void sendRCtoFC()
     mspSerialEncode(mspPort, &rc);
 
 }
+void set_debug(uint8_t mode,uint8_t error){
+    debugData[8] = mode;
+    debugData[9] = error;
+}
+void send_debug()
+{
+    debugData[0] = (uint8_t)((0x00FF) & rcControl.rcdata.roll);
+    debugData[1] = (uint8_t)((0x00FF) & rcControl.rcdata.roll >> 8);
 
-void send_debug(uint8_t *data, uint8_t len){
+    debugData[2] = (uint8_t)((0x00FF) & rcControl.rcdata.pitch);
+    debugData[3] = (uint8_t)((0x00FF) & rcControl.rcdata.pitch >> 8);
+
+    debugData[4] = (uint8_t)((0x00FF) & rcControl.rcdata.yaw);
+    debugData[5] = (uint8_t)((0x00FF) & rcControl.rcdata.yaw >> 8);
+
+    debugData[6] = (uint8_t)((0x00FF) & rcControl.rcdata.throttle);
+    debugData[7] = (uint8_t)((0x00FF) & rcControl.rcdata.throttle >> 8);
+
     mspPort_t *mspPort = &PC_msp;
     static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
     mspPacket_t rc = {
@@ -452,8 +486,8 @@ void send_debug(uint8_t *data, uint8_t len){
 
     sbuf_t *dst = &rc.buf;
 
-    for(int i = 0;i<len;i++){
-        sbufWriteU8(dst, data[i]);
+    for (int i = 0; i < 20; i++) {
+        sbufWriteU8(dst, debugData[i]);
     }
 
     sbufSwitchToReader(&rc.buf, outBufHead); // change streambuf direction
