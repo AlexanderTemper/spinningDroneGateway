@@ -6,7 +6,7 @@ Used Hardeware:
 * Board:  Particle Xenon https://docs.particle.io/xenon/
 * TOF Sensor: vl53l0x https://www.st.com/en/imaging-and-photonics-solutions/vl53l0x.html
 
-
+![](https://raw.githubusercontent.com/AlexanderTemper/spinningDroneGateway/master/Doku/hardware/hardware.png)
 
 
 # Setting up pygatt and inputs (ps3controller):
