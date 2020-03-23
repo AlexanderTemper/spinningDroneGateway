@@ -37,10 +37,10 @@ ADDRESS_TYPE = pygatt.BLEAddressType.random
 DEVICE_ADDRESS = "c0:08:80:00:08:80"
 adapter = pygatt.GATTToolBackend()
 
-
 if enableROS:
 	rospy.init_node('drone_debug', anonymous=True)
 	pub = rospy.Publisher('PID', Int16MultiArray, queue_size=10)
+
 
 def progress(count, total, status=''):
     bar_len = 5
@@ -179,7 +179,7 @@ class mspClass:
 			pp = self.toInt(self.inBuffer[6], self.inBuffer[7])
 			pi = self.toInt(self.inBuffer[8], self.inBuffer[9])
 			pd = self.toInt(self.inBuffer[10], self.inBuffer[11])
-			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d)+ " PP:" + str(pp) + " PI:" + str(pi) + " PD:" + str(pd) +"\n-------------------------\n"
+			print "\n-----------------------\ngot PID data:" + str(self.time_between_frames) + " P:" + str(p) + " I:" + str(i) + " D:" + str(d) + " PP:" + str(pp) + " PI:" + str(pi) + " PD:" + str(pd) + "\n-------------------------\n"
 		elif self.cmd == self.MSP_ATTITUDE:
 			estRoll = self.twos_comp_16(self.toInt(self.inBuffer[0], self.inBuffer[1]))
 			estPtich = self.twos_comp_16(self.toInt(self.inBuffer[2], self.inBuffer[3]))
@@ -192,7 +192,7 @@ class mspClass:
 		 	th = self.twos_comp_16(self.toInt(self.inBuffer[6], self.inBuffer[7]))
 			print "got EST DEBUGDATA" + " 1-2:" + str(p)+" 3-4:" + str(i)+" 5-6:" + str(d)+" 7-8:" + str(th) +" Mode:"+str(self.inBuffer[8])+" Error:"+str(self.inBuffer[9])
 			if enableROS:
-				rosdata = Int16MultiArray(data=[p,i,d,th])
+				rosdata = Int16MultiArray(data=[p, i, d, th])
 				pub.publish(rosdata)
 		else:
 			print "command not supported"
@@ -214,6 +214,22 @@ class ps3joyClass:
 	arm = 1000
 	mode = 1000
 	timeout = millis()
+	
+	def deadband(self, rcData):
+		tmp = rcData - 1500
+
+		if abs(tmp) <= 25:
+			tmp = 0
+			
+		return tmp + 1500
+	
+	def curve(self, rcData):
+		return rcData
+		#tmp = rcData - 1500
+		#y = (tmp * tmp) / 500
+		#if tmp < 0:
+		#	y = -y
+		#return y + 1500
 	
 	def scale(self, raw):
 		return int((raw / 255.0) * 1000 + 1000)
@@ -269,14 +285,16 @@ class ps3joyClass:
 					self.mode = self.scale(event.state + 127)
 			else:
 				if event.code == 'ABS_X':
-					self.yaw = self.scale(event.state)
+					self.yaw = self.deadband(self.scale(event.state))
 					self.timeout = millis()
 				# elif event.code == 'ABS_RZ':
 					# self.throttle = int((event.state / 255.0) *500 +1000)
 				elif event.code == 'ABS_RY':
-					self.pitch = self.scale(255 - event.state)
+					self.pitch = self.deadband(self.scale(255 - event.state))
+					#self.pitch = self.curve(self.pitch)
 				elif event.code == 'ABS_RX':
-					self.roll = self.scale(event.state)
+					self.roll = self.deadband(self.scale(event.state))
+					self.roll = self.curve(self.roll)
 				elif event.code == 'BTN_TR':
 					self.arm = self.scale(event.state * 255)
 				elif event.code == 'BTN_TL':
@@ -285,8 +303,8 @@ class ps3joyClass:
 					self.throttle = self.throttle + event.state * 5;
 				elif event.code == 'BTN_EAST':
 					self.throttle = self.throttle - event.state * 5;
-				#elif event.code != 'SYN_REPORT':
-				#	print(event.ev_type, event.code, event.state)
+				# elif event.code != 'SYN_REPORT':
+				# 	print(event.ev_type, event.code, event.state)
 		
 		if millis() - self.timeout > 500:
 			self.reset()
@@ -343,7 +361,7 @@ def xor(data):
 	return erg
 
 
-def setPid(p, i, d,pp,pi,pd):
+def setPid(p, i, d, pp, pi, pd):
 	data = [
 		0x00FF & p, p >> 8,
 		0x00FF & i, i >> 8,
@@ -417,12 +435,12 @@ def msp_data(device, data):
 
 
 P_climb = 180
-I_climb = 15
+I_climb = 10
 D_climb = 3000
 
-P_push = 500
-I_push = 500
-D_push = 8000
+P_push = 300
+I_push = 800
+D_push = 0
 try:
 	
 	adapter.start()
@@ -433,10 +451,8 @@ try:
 	    device = connect()
  	     
 	device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
-	# set PID values
-	# 800,10,500
 	
-	while not setPid(P_climb, I_climb, D_climb,P_push,I_push,D_push):
+	while not setPid(P_climb, I_climb, D_climb, P_push, I_push, D_push):
 		device = connect()
 		if device:
 			device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
@@ -449,7 +465,7 @@ try:
  			timer = millis()
 			while not send_data():
 				device = connect()
-				while not setPid(P_climb, I_climb, D_climb,P_push,I_push,D_push):
+				while not setPid(P_climb, I_climb, D_climb, P_push, I_push, D_push):
 					device = connect()
 					if device:
 						device.subscribe("00008881-0000-1000-8000-00805f9b34fb", callback=handle_data)
