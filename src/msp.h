@@ -100,7 +100,10 @@ extern uint8_t *debugData;
 
 void processMSP(void);
 int requestAttitude(void);
+void requestRawIMU(void);
 void sendRCtoFC(void);
-void send_debug();
+void send_debug(void);
+void send_imu_debug(void);
+
 void set_debug(uint8_t mode,uint8_t error);
 #endif /*MSP_H_*/

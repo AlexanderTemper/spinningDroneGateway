@@ -14,6 +14,7 @@
 altHoldPid_t altHold;
 rc_control_t rcControl;
 att_data_t att_data;
+raw_imu_data_t raw_imu_data;
 
 flight_mode modus = IDLE;
 int16_t headFreeModeHold = 0;

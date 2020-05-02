@@ -55,16 +55,16 @@ void main(void)
     gpio_pin_configure(setup_status_led_dev, LED, GPIO_OUTPUT);
     gpio_pin_set(setup_status_led_dev, LED, 0);
 
-    init_sensor(&tof_front, device_get_binding(DT_INST_1_ST_VL53L0X_LABEL), 0);
-    init_sensor(&tof_down, device_get_binding(DT_INST_0_ST_VL53L0X_LABEL), 20);
-    if (tof_front.dev == NULL) {
-        printk("Could not get VL53L0X frontFace\n");
-        return;
-    }
-    if (tof_down.dev == NULL) {
-        printk("Could not get VL53L0X downFace\n");
-        return;
-    }
+//    init_sensor(&tof_front, device_get_binding(DT_INST_1_ST_VL53L0X_LABEL), 0);
+//    init_sensor(&tof_down, device_get_binding(DT_INST_0_ST_VL53L0X_LABEL), 20);
+//    if (tof_front.dev == NULL) {
+//        printk("Could not get VL53L0X frontFace\n");
+//        return;
+//    }
+//    if (tof_down.dev == NULL) {
+//        printk("Could not get VL53L0X downFace\n");
+//        return;
+//    }
 
     // setup ringbuffers for communication with pc and fc
     init_ringbuffer(&PC_rx);
@@ -83,12 +83,12 @@ void main(void)
 
 //    biquadFilter_t tof_filter_front;
 //    biquadFilterInit(&tof_filter_front, 33, (100000/SENSOR_TIME) , BIQUAD_Q, FILTER_LPF);
-    expFilterInit(&tof_front.filter.expFilter, 0.3f);
+//    expFilterInit(&tof_front.filter.expFilter, 0.3f);
 //    tof_front.filter.biquadFilter = &tof_filter_front;
 
 //    biquadFilter_t tof_filter_ground;
 //    biquadFilterInit(&tof_filter_ground, 33, (100000/SENSOR_TIME) , BIQUAD_Q, FILTER_LPF);
-    expFilterInit(&tof_down.filter.expFilter, 0.3f);
+//    expFilterInit(&tof_down.filter.expFilter, 0.3f);
 //    tof_down.filter.biquadFilter = &tof_filter_ground;
 
     s64_t stopwatch = 0;
@@ -100,12 +100,12 @@ void main(void)
 
         processMSP(); // Process the MSP Buffer and get new information form PC and FC
 
-        if (currentTime >= sensorTime) {
-            sensorTime = currentTime + SENSOR_TIME;
-            fetch_distance_sensor(&tof_front);
-            fetch_distance_sensor(&tof_down);
-            //printk("SENSOR %i,%i,%i\n", tof_front.range,tof_down.range,0);
-        }
+//        if (currentTime >= sensorTime) {
+//            sensorTime = currentTime + SENSOR_TIME;
+//            fetch_distance_sensor(&tof_front);
+//            fetch_distance_sensor(&tof_down);
+//            //printk("SENSOR %i,%i,%i\n", tof_front.range,tof_down.range,0);
+//        }
 
         if (currentTime >= attitudeFetchTime) {
             int stopwatch =  MSP_ATTITUDE_FETCH_TIME + currentTime - attitudeFetchTime;

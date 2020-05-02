@@ -45,6 +45,21 @@ typedef union {
     int16_t raw[3];
 } att_data_t;
 
+typedef union {
+    struct {
+        int16_t acc_x;
+        int16_t acc_y;
+        int16_t acc_z;
+        int16_t gyro_x;
+        int16_t gyro_y;
+        int16_t gyro_z;
+        int16_t mag_x;
+        int16_t mag_y;
+        int16_t mag_z;
+    };
+    int16_t raw[9];
+} raw_imu_data_t;
+
 typedef struct {
     rcdata_t rcdata;
     s64_t last_frame_time;
@@ -55,6 +70,7 @@ typedef struct {
 extern altHoldPid_t altHold;
 extern rc_control_t rcControl;
 extern att_data_t att_data;
+extern raw_imu_data_t raw_imu_data;
 
 void setAltitudePID(u16_t p, u16_t i, u16_t d);
 void setPushPID(u16_t p, u16_t i, u16_t d);

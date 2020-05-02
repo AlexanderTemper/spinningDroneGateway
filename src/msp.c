@@ -56,6 +56,8 @@ static mspGatewayPacketType_e msp_packet_lookup_table(mspPort_t *mspPort)
             return MSP_GATEWAY_PACKET_CONSUME;
         case MSP_SET_RAW_RC:
             return MSP_GATEWAY_PACKET_CONSUME;
+        case MSP_RAW_IMU:
+            return MSP_GATEWAY_PACKET_CONSUME;
         }
     }
     return MSP_GATEWAY_PACKET_PASSTHROUGH;
@@ -363,6 +365,26 @@ static bool mspConsume(mspPort_t *mspPort)
     sbuf_t srcBuffer;
     sbuf_t *src = sbufInit(&srcBuffer, mspPort->inBuf, mspPort->inBuf + mspPort->dataSize);
     switch (mspPort->cmdMSP) {
+    case MSP_RAW_IMU:
+        ;
+        uint8_t chC = mspPort->dataSize / sizeof(uint16_t);
+
+        if (chC == 9) {
+            raw_imu_data.acc_x = (int16_t)sbufReadU16(src);
+            raw_imu_data.acc_y = (int16_t)sbufReadU16(src);
+            raw_imu_data.acc_z = (int16_t)sbufReadU16(src);
+
+            raw_imu_data.gyro_x = (int16_t)sbufReadU16(src);
+            raw_imu_data.gyro_y = (int16_t)sbufReadU16(src);
+            raw_imu_data.gyro_z = (int16_t)sbufReadU16(src);
+
+            raw_imu_data.mag_x = sbufReadU16(src);
+            raw_imu_data.mag_y = sbufReadU16(src);
+            raw_imu_data.mag_z = sbufReadU16(src);
+
+            //printk("raw IMU %d %d %d,%d %d %d,%d %d %d\n", acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,mag_x,mag_y,mag_z);
+        }
+        return true;
     case MSP_ATTITUDE:
         ;
         uint8_t channelCount = mspPort->dataSize / sizeof(uint16_t);
@@ -431,6 +453,22 @@ int requestAttitude()
     return request_send_counter; //retun number of request with no answer
 }
 
+void requestRawIMU()
+{
+    mspPort_t *mspPort = &FC_msp;
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t ask = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = MSP_RAW_IMU,
+            .direction = '<', };
+    uint8_t *outBufHead = ask.buf.ptr;
+
+    sbufSwitchToReader(&ask.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort, &ask);
+}
+
 void sendRCtoFC()
 {
     mspPort_t *mspPort = &FC_msp;
@@ -454,7 +492,31 @@ void sendRCtoFC()
 
     sbufSwitchToReader(&rc.buf, outBufHead); // change streambuf direction
     mspSerialEncode(mspPort, &rc);
+}
 
+void send_imu_debug(void){
+    mspPort_t *mspPort = &PC_msp;
+    static uint8_t outBuf[MSP_PORT_OUTBUF_SIZE];
+    mspPacket_t rc = {
+            .buf = {
+                    .ptr = outBuf,
+                    .end = ARRAYEND(outBuf), },
+            .cmd = MSP_RAW_IMU,
+            .direction = '>', };
+    uint8_t *outBufHead = rc.buf.ptr;
+
+    sbuf_t *dst = &rc.buf;
+
+    sbufWriteU16(dst, raw_imu_data.acc_x);
+    sbufWriteU16(dst, raw_imu_data.acc_y);
+    sbufWriteU16(dst, raw_imu_data.acc_z);
+
+    sbufWriteU16(dst, raw_imu_data.gyro_x);
+    sbufWriteU16(dst, raw_imu_data.gyro_y);
+    sbufWriteU16(dst, raw_imu_data.gyro_z);
+
+    sbufSwitchToReader(&rc.buf, outBufHead); // change streambuf direction
+    mspSerialEncode(mspPort, &rc);
 }
 void set_debug(uint8_t mode,uint8_t error){
     debugData[8] = mode;
